@@ -179,6 +179,22 @@ def stream_log():
     )
 
 
+@app.route("/api/rubric")
+def get_rubric():
+    """Return rubric items so the UI can display a legend."""
+    cfg_path = BASE_DIR / DEFAULT_CONFIG
+    rubric_file = "./rubric.json"
+    if cfg_path.exists():
+        with open(cfg_path) as f:
+            rubric_file = json.load(f).get("rubric_file", rubric_file)
+    rubric_path = BASE_DIR / rubric_file
+    if not rubric_path.exists():
+        return jsonify({"items": []})
+    with open(rubric_path) as f:
+        data = json.load(f)
+    return jsonify({"lab": data.get("lab", ""), "items": data.get("items", [])})
+
+
 @app.route("/api/results")
 def get_results():
     """Return the results CSV as JSON rows."""

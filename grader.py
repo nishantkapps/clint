@@ -255,8 +255,8 @@ def grade_file(
     reasons  = {}
     feedback = []
 
-    for item in rubric_items:
-        name      = item["name"]
+    for n, item in enumerate(rubric_items, 1):
+        col_key   = f"Rubric_{n}"           # generic column name in CSV
         item_type = item.get("type", "static")
         max_marks = item.get("max_marks", 0)
 
@@ -275,9 +275,9 @@ def grade_file(
         else:
             marks, reason = 0, f"Unknown type: {item_type}"
 
-        scores[name]  = marks
-        reasons[name] = reason
-        feedback.append(f"{name} ({marks}/{max_marks}): {reason}")
+        scores[col_key]  = marks
+        reasons[col_key] = reason
+        feedback.append(f"Rubric {n} — {item['name']} ({marks}/{max_marks}): {reason}")
 
     total = sum(scores.values())
 
@@ -358,7 +358,7 @@ def export_csv(results: list[dict], output_path: str, rubric_items: list[dict]):
         return
 
     fixed   = ["Student_ID", "File", "Compiles", "Compile_Error"]
-    rubric  = [item["name"] for item in rubric_items]
+    rubric  = [f"Rubric_{n}" for n in range(1, len(rubric_items) + 1)]
     trailing= (["Total_Score", "Max_Score", "Feedback"] if rubric_items
                 else ["Feedback"])
     fieldnames = fixed + rubric + trailing

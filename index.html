@@ -169,6 +169,32 @@
     .score-zero    { color: var(--danger);  font-weight: 600; }
     .score-max     { color: var(--text-muted); font-weight: 400; font-size: .8em; }
 
+    .rubric-chip {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: .8rem;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 160px;
+      max-width: 240px;
+    }
+    .rubric-chip .chip-label {
+      font-weight: 700;
+      color: var(--accent);
+      font-size: .75rem;
+      text-transform: uppercase;
+      letter-spacing: .4px;
+    }
+    .rubric-chip .chip-name  { font-weight: 600; color: var(--text); }
+    .rubric-chip .chip-cond  { color: var(--text-muted); font-size: .76rem; line-height:1.4; }
+    .rubric-chip .chip-meta  { color: var(--text-muted); font-size: .74rem; margin-top:2px; }
+    .badge-type-static { color: #2e8f5f; }
+    .badge-type-llm    { color: #5046e5; }
+    .badge-type-test   { color: #c47d0a; }
+
     .empty-results {
       text-align: center;
       padding: 60px 20px;
@@ -285,6 +311,13 @@
 
   <!-- Results -->
   <div id="results-section" style="display:none">
+
+    <!-- Rubric legend -->
+    <div id="rubric-legend" style="display:none;margin-bottom:20px">
+      <div style="font-size:.8rem;font-weight:600;letter-spacing:.3px;color:var(--text-muted);text-transform:uppercase;margin-bottom:10px">Rubric Key</div>
+      <div id="rubric-legend-items" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+    </div>
+
     <div class="results-header">
       <h2 id="results-title">Results</h2>
       <div style="display:flex;gap:10px">

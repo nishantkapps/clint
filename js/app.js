@@ -6,9 +6,10 @@
 const SERVER = 'http://localhost:5001';
 
 /* ── State ───────────────────────────────────────────────── */
-let connected = false;
-let running   = false;
-let csvData   = { headers: [], rows: [] };
+let connected   = false;
+let running     = false;
+let csvData     = { headers: [], rows: [] };
+let rubricItems = [];   // [{name, condition, type, max_marks}, ...]
 
 /* ── DOM refs ────────────────────────────────────────────── */
 const banner      = document.getElementById('server-banner');
@@ -32,6 +33,7 @@ async function checkServer() {
     if (res.ok) {
       setConnected(true);
       loadConfig();
+      loadRubric();
       tryLoadResults();
       return;
     }
@@ -108,6 +110,40 @@ function toggleRegexField(strategy) {
     strategy === 'regex' ? 'flex' : 'none';
 }
 
+/* ── Rubric legend ───────────────────────────────────────── */
+
+async function loadRubric() {
+  try {
+    const res = await fetch(`${SERVER}/api/rubric`);
+    if (!res.ok) return;
+    const data = await res.json();
+    rubricItems = data.items || [];
+    renderRubricLegend(rubricItems);
+  } catch (_) {}
+}
+
+function renderRubricLegend(items) {
+  const legend = document.getElementById('rubric-legend');
+  const container = document.getElementById('rubric-legend-items');
+  if (!items.length) { legend.style.display = 'none'; return; }
+
+  container.innerHTML = items.map((item, i) => {
+    const typeClass = `badge-type-${item.type || 'static'}`;
+    return `
+      <div class="rubric-chip">
+        <span class="chip-label">Rubric ${i + 1}</span>
+        <span class="chip-name">${esc(item.name)}</span>
+        <span class="chip-cond">${esc(item.condition)}</span>
+        <span class="chip-meta">
+          <span class="${typeClass}">${item.type}</span>
+          &nbsp;·&nbsp; max ${item.max_marks} pts
+        </span>
+      </div>`;
+  }).join('');
+
+  legend.style.display = 'block';
+}
+
 /* ── Run grader ──────────────────────────────────────────── */
 
 btnRun.addEventListener('click', async () => {
@@ -166,7 +202,7 @@ async function startGrader() {
       }
       setProgress(100, 'Done.');
       finishRun(true);
-      setTimeout(() => tryLoadResults(), 600);
+      setTimeout(() => { loadRubric(); tryLoadResults(); }, 600);
       return;
     }
 
@@ -314,6 +350,8 @@ function renderTable(headers, rows) {
 
   resultsSection.style.display = 'block';
   emptyResults.style.display   = 'none';
+  // Refresh legend in case rubric was updated
+  if (rubricItems.length) renderRubricLegend(rubricItems);
 }
 
 function showEmptyResults() {
