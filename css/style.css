@@ -2,19 +2,19 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg:        #0f1117;
-  --surface:   #1a1d27;
-  --surface2:  #222536;
-  --border:    #2e3248;
-  --accent:    #6c63ff;
-  --accent-h:  #8b84ff;
-  --danger:    #e05c5c;
-  --success:   #4caf7d;
-  --warn:      #e0a84a;
-  --text:      #e8eaf0;
-  --text-muted:#8a8fa8;
+  --bg:        #f4f5f9;
+  --surface:   #ffffff;
+  --surface2:  #f0f1f6;
+  --border:    #dde0ea;
+  --accent:    #5046e5;
+  --accent-h:  #6c63ff;
+  --danger:    #d63b3b;
+  --success:   #2e8f5f;
+  --warn:      #c47d0a;
+  --text:      #1a1d2e;
+  --text-muted:#6b7080;
   --radius:    10px;
-  --shadow:    0 4px 24px rgba(0,0,0,.45);
+  --shadow:    0 4px 24px rgba(0,0,0,.10);
 }
 
 body {
@@ -342,7 +342,7 @@ body {
 /* ─── Confirm dialog ────────────────────────────────────────── */
 .overlay {
   position: fixed; inset: 0;
-  background: rgba(0,0,0,.6);
+  background: rgba(0,0,0,.35);
   display: flex; align-items: center; justify-content: center;
   z-index: 300;
   opacity: 0; pointer-events: none; transition: opacity .2s;
@@ -364,7 +364,7 @@ body {
 /* ─── Scrollbar ─────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: #c4c8d8; border-radius: 3px; }
 
 /* ─── Responsive ────────────────────────────────────────────── */
 @media (max-width: 600px) {
