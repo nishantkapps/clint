@@ -5,6 +5,72 @@
 
 const STORAGE_KEY = 'clint_rubric_v1';
 
+const DEFAULT_RUBRIC = {
+  lab: 'Lab 1 — C Basics',
+  created: new Date().toISOString().slice(0, 10),
+  items: [
+    {
+      id: 'default_header_files',
+      name: 'Header_Files',
+      condition: 'Must include stdio.h and stdlib.h',
+      type: 'static',
+      max_marks: 2,
+      patterns: [
+        '#include\\s*[<"]stdio\\.h[>"]',
+        '#include\\s*[<"]stdlib\\.h[>"]'
+      ]
+    },
+    {
+      id: 'default_memory_mgmt',
+      name: 'Memory_Management',
+      condition: 'Uses malloc and free correctly — no memory leaks',
+      type: 'static',
+      max_marks: 5,
+      patterns: [
+        'malloc\\s*\\(',
+        'free\\s*\\('
+      ]
+    },
+    {
+      id: 'default_print_output',
+      name: 'Print_Output',
+      condition: 'Uses printf to print output',
+      type: 'static',
+      max_marks: 3,
+      patterns: [
+        'printf\\s*\\('
+      ]
+    },
+    {
+      id: 'default_loop_logic',
+      name: 'Loop_Logic',
+      condition: 'Uses a loop construct (for or while)',
+      type: 'static',
+      max_marks: 5,
+      patterns: [
+        'for\\s*\\(',
+        'while\\s*\\('
+      ]
+    },
+    {
+      id: 'default_pointer_logic',
+      name: 'Pointer_Logic',
+      condition: 'Correct use of pointers — dereferencing and pointer arithmetic',
+      type: 'llm',
+      max_marks: 5,
+      patterns: []
+    },
+    {
+      id: 'default_output_correct',
+      name: 'Output_Correctness',
+      condition: 'Program output matches expected results for all test cases',
+      type: 'test',
+      max_marks: 10,
+      patterns: []
+    }
+  ]
+};
+
 let state = {
   lab: '',
   created: new Date().toISOString().slice(0, 10),
@@ -16,8 +82,17 @@ let state = {
 function loadFromStorage() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) state = JSON.parse(raw);
-  } catch (_) {}
+    if (raw) {
+      state = JSON.parse(raw);
+    } else {
+      // First visit — seed with defaults so the editor isn't empty
+      state = JSON.parse(JSON.stringify(DEFAULT_RUBRIC)); // deep copy
+      state.created = new Date().toISOString().slice(0, 10);
+      saveToStorage();
+    }
+  } catch (_) {
+    state = JSON.parse(JSON.stringify(DEFAULT_RUBRIC));
+  }
 }
 
 function saveToStorage() {
