@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rubric Editor — C-Lab Autograder</title>
+  <link rel="stylesheet" href="css/style.css?v=1" />
+  <style>
+    /* page-specific tweaks */
+    .rubric-card.editing .card-row { opacity: .5; pointer-events: none; }
+  </style>
+</head>
+<body>
+
+<!-- ── Nav ─────────────────────────────────────────────────── -->
+<nav class="navbar">
+  <a class="logo" href="index.html">C-Lab <span>Autograder</span></a>
+  <div class="nav-links">
+    <a href="rubric.html" class="active">Rubric</a>
+    <a href="index.html">Grade</a>
+  </div>
+</nav>
+
+<!-- ── Page ────────────────────────────────────────────────── -->
+<main class="page">
+  <div class="page-header">
+    <h1>Rubric Editor</h1>
+    <p>Define the marking scheme. Each item becomes a column in the results CSV.</p>
+  </div>
+
+  <!-- Lab name -->
+  <div class="lab-bar">
+    <label for="lab-name">Lab / Assignment</label>
+    <input id="lab-name" type="text" placeholder="e.g. Lab 3 — Linked Lists" autocomplete="off" />
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <button class="btn btn-primary" id="btn-add-item">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      Add Item
+    </button>
+    <label class="btn btn-ghost" style="cursor:pointer;">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <path d="M2 10V12h10v-2M7 2v7M4 6l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Load JSON
+      <input type="file" id="file-import" accept=".json" style="display:none" />
+    </label>
+    <button class="btn btn-ghost" id="btn-export">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <path d="M2 10V12h10v-2M7 9V2M4 5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Save JSON
+    </button>
+    <button class="btn btn-ghost" id="btn-clear" style="margin-left:auto;">
+      Clear All
+    </button>
+  </div>
+
+  <!-- Add item panel -->
+  <div id="add-panel">
+    <div class="panel-header">New Rubric Item</div>
+    <div class="edit-form" id="add-form-body">
+      <!-- Name -->
+      <div class="form-group">
+        <label>NAME <span style="color:var(--danger)">*</span></label>
+        <input id="add-name" type="text" placeholder="e.g. Header Files" autocomplete="off" />
+      </div>
+      <!-- Max marks -->
+      <div class="form-group">
+        <label>MAX MARKS <span style="color:var(--danger)">*</span></label>
+        <input id="add-marks" type="number" min="0" max="100" placeholder="5" />
+      </div>
+      <!-- Condition (full width) -->
+      <div class="form-group full-width">
+        <label>CONDITION / DESCRIPTION <span style="color:var(--danger)">*</span></label>
+        <textarea id="add-condition" rows="2" placeholder="What does the student need to do to earn these marks?"></textarea>
+      </div>
+      <!-- Type (full width) -->
+      <div class="form-group full-width">
+        <label>GRADING TYPE</label>
+        <div class="type-selector">
+          <label title="Checked via regex pattern matching">
+            <input type="radio" name="add-type" value="static" checked />
+            <span class="type-icon">🔍</span>
+            Static
+          </label>
+          <label title="Evaluated by an AI model">
+            <input type="radio" name="add-type" value="llm" />
+            <span class="type-icon">🤖</span>
+            LLM
+          </label>
+          <label title="Scored by running test cases">
+            <input type="radio" name="add-type" value="test" />
+            <span class="type-icon">▶</span>
+            Test
+          </label>
+        </div>
+      </div>
+      <!-- Actions -->
+      <div class="form-actions">
+        <button class="btn btn-primary" id="btn-save-add">Save Item</button>
+        <button class="btn btn-ghost" id="btn-cancel-add">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rubric list -->
+  <div class="rubric-list" id="rubric-list"></div>
+
+</main>
+
+<!-- ── Total footer ─────────────────────────────────────────── -->
+<footer class="total-bar">
+  <span class="item-count" id="item-count">0 items</span>
+  <span class="total-marks">Total marks: <span id="total-display">0</span></span>
+</footer>
+
+<!-- ── Confirm dialog ───────────────────────────────────────── -->
+<div class="overlay" id="confirm-overlay">
+  <div class="dialog">
+    <h3 id="confirm-title">Delete item?</h3>
+    <p id="confirm-body">This cannot be undone.</p>
+    <div class="dialog-actions">
+      <button class="btn btn-ghost btn-sm" id="confirm-cancel">Cancel</button>
+      <button class="btn btn-danger btn-sm" id="confirm-ok">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast ────────────────────────────────────────────────── -->
+<div id="toast"></div>
+
+<script src="js/rubric.js?v=1"></script>
+<script>
+/* ══════════════════════════════════════════════════════════════
+   rubric-editor UI logic
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Drag state ──────────────────────────────────────────── */
+let dragSrcIdx = null;
+
+/* ── Boot ────────────────────────────────────────────────── */
+loadFromStorage();
+renderAll();
+
+/* ── Lab name binding ────────────────────────────────────── */
+const labInput = document.getElementById('lab-name');
+labInput.value = getState().lab;
+labInput.addEventListener('input', () => setLab(labInput.value));
+
+/* ── Add panel toggle ────────────────────────────────────── */
+const addPanel = document.getElementById('add-panel');
+
+document.getElementById('btn-add-item').addEventListener('click', () => {
+  clearAddForm();
+  addPanel.classList.add('open');
+  document.getElementById('add-name').focus();
+  addPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+});
+document.getElementById('btn-cancel-add').addEventListener('click', () => {
+  addPanel.classList.remove('open');
+});
+
+/* ── Save new item ───────────────────────────────────────── */
+document.getElementById('btn-save-add').addEventListener('click', () => {
+  const name      = document.getElementById('add-name').value.trim();
+  const marks     = document.getElementById('add-marks').value;
+  const condition = document.getElementById('add-condition').value.trim();
+  const type      = document.querySelector('input[name="add-type"]:checked').value;
+
+  if (!name) return flashError('Name is required.');
+  if (!condition) return flashError('Condition is required.');
+  if (marks === '' || Number(marks) < 0) return flashError('Max marks must be 0 or higher.');
+
+  addItem({ name, condition, type, max_marks: Number(marks) });
+  addPanel.classList.remove('open');
+  clearAddForm();
+  renderAll();
+  toast('Item added.', 'success');
+});
+
+/* Allow Enter in name/marks to save */
+['add-name','add-marks'].forEach(id => {
+  document.getElementById(id).addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('btn-save-add').click();
+  });
+});
+
+/* ── Export ──────────────────────────────────────────────── */
+document.getElementById('btn-export').addEventListener('click', () => {
+  if (!getState().items.length) return flashError('Nothing to export — add some items first.');
+  exportJSON();
+  toast('Saved to file.', 'success');
+});
+
+/* ── Import ──────────────────────────────────────────────── */
+document.getElementById('file-import').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    await importJSON(file);
+    labInput.value = getState().lab;
+    renderAll();
+    toast('Rubric loaded.', 'success');
+  } catch (err) {
+    flashError('Could not parse file: ' + err.message);
+  }
+  e.target.value = '';
+});
+
+/* ── Clear all ───────────────────────────────────────────── */
+document.getElementById('btn-clear').addEventListener('click', () => {
+  if (!getState().items.length) return;
+  confirm('Clear all rubric items?', 'All items will be removed. This cannot be undone.', () => {
+    getState().items = [];
+    saveToStorage();
+    renderAll();
+    toast('Cleared.', 'success');
+  });
+});
+
+/* ══════════════════════════════════════════════════════════
+   RENDER
+   ══════════════════════════════════════════════════════════ */
+
+function renderAll() {
+  const list = document.getElementById('rubric-list');
+  const s = getState();
+  list.innerHTML = '';
+
+  if (s.items.length === 0) {
+    list.innerHTML = `
+      <div class="empty-state">
+        <strong>No rubric items yet</strong>
+        Click "Add Item" to define your first grading criterion.
+      </div>`;
+    updateFooter(0, 0);
+    return;
+  }
+
+  s.items.forEach((item, idx) => {
+    list.appendChild(buildCard(item, idx));
+  });
+  updateFooter(s.items.length, totalMarks());
+}
+
+function buildCard(item, idx) {
+  const card = document.createElement('div');
+  card.className = 'rubric-card';
+  card.dataset.idx = idx;
+  card.dataset.id  = item.id;
+  card.draggable   = true;
+
+  /* ── Card row ── */
+  const row = document.createElement('div');
+  row.className = 'card-row';
+  row.innerHTML = `
+    <span class="drag-handle" title="Drag to reorder">⠿</span>
+    <span class="card-name">${esc(item.name)}</span>
+    <span class="card-condition">${esc(item.condition)}</span>
+    <span class="badge badge-${item.type}">${item.type}</span>
+    <span class="card-marks"><strong>${item.max_marks}</strong> pts</span>
+    <span class="card-actions">
+      <button class="icon-btn edit-btn" title="Edit">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M9.5 2.5l2 2-7 7H2.5v-2l7-7z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <button class="icon-btn delete delete-btn" title="Delete">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M2 4h10M5 4V2.5h4V4M5.5 7v4M8.5 7v4M3 4l.7 7.5h6.6L11 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </span>`;
+  card.appendChild(row);
+
+  /* ── Inline edit form (hidden until edit clicked) ── */
+  const form = buildInlineForm(item);
+  form.style.display = 'none';
+  card.appendChild(form);
+
+  /* ── Edit toggle ── */
+  row.querySelector('.edit-btn').addEventListener('click', () => {
+    const open = form.style.display !== 'none';
+    // Close all other open forms first
+    document.querySelectorAll('.edit-form').forEach(f => {
+      if (f !== form) f.style.display = 'none';
+      f.closest('.rubric-card')?.classList.remove('editing');
+    });
+    form.style.display = open ? 'none' : 'grid';
+    card.classList.toggle('editing', !open);
+    if (!open) form.querySelector('input[data-field="name"]').focus();
+  });
+
+  /* ── Delete ── */
+  row.querySelector('.delete-btn').addEventListener('click', () => {
+    confirm(`Delete "${item.name}"?`, 'This item will be removed from the rubric.', () => {
+      deleteItem(item.id);
+      renderAll();
+      toast('Item deleted.', 'success');
+    });
+  });
+
+  /* ── Drag events ── */
+  card.addEventListener('dragstart', e => {
+    dragSrcIdx = idx;
+    e.dataTransfer.effectAllowed = 'move';
+    setTimeout(() => card.style.opacity = '0.4', 0);
+  });
+  card.addEventListener('dragend', () => {
+    card.style.opacity = '1';
+    document.querySelectorAll('.rubric-card').forEach(c => c.classList.remove('drag-over'));
+  });
+  card.addEventListener('dragover', e => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    document.querySelectorAll('.rubric-card').forEach(c => c.classList.remove('drag-over'));
+    card.classList.add('drag-over');
+  });
+  card.addEventListener('drop', e => {
+    e.preventDefault();
+    const toIdx = Number(card.dataset.idx);
+    if (dragSrcIdx !== null && dragSrcIdx !== toIdx) {
+      reorder(dragSrcIdx, toIdx);
+      renderAll();
+    }
+    dragSrcIdx = null;
+  });
+
+  return card;
+}
+
+function buildInlineForm(item) {
+  const form = document.createElement('div');
+  form.className = 'edit-form';
+  form.innerHTML = `
+    <div class="form-group">
+      <label>NAME</label>
+      <input type="text" data-field="name" value="${esc(item.name)}" autocomplete="off" />
+    </div>
+    <div class="form-group">
+      <label>MAX MARKS</label>
+      <input type="number" data-field="max_marks" min="0" max="100" value="${item.max_marks}" />
+    </div>
+    <div class="form-group full-width">
+      <label>CONDITION / DESCRIPTION</label>
+      <textarea data-field="condition" rows="2">${esc(item.condition)}</textarea>
+    </div>
+    <div class="form-group full-width">
+      <label>GRADING TYPE</label>
+      <div class="type-selector">
+        <label>
+          <input type="radio" name="type-${item.id}" value="static" ${item.type==='static'?'checked':''} />
+          <span class="type-icon">🔍</span> Static
+        </label>
+        <label>
+          <input type="radio" name="type-${item.id}" value="llm" ${item.type==='llm'?'checked':''} />
+          <span class="type-icon">🤖</span> LLM
+        </label>
+        <label>
+          <input type="radio" name="type-${item.id}" value="test" ${item.type==='test'?'checked':''} />
+          <span class="type-icon">▶</span> Test
+        </label>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-success btn-sm save-edit-btn">Save</button>
+      <button class="btn btn-ghost btn-sm cancel-edit-btn">Cancel</button>
+    </div>`;
+
+  form.querySelector('.save-edit-btn').addEventListener('click', () => {
+    const name      = form.querySelector('[data-field="name"]').value.trim();
+    const marks     = form.querySelector('[data-field="max_marks"]').value;
+    const condition = form.querySelector('[data-field="condition"]').value.trim();
+    const type      = form.querySelector(`input[name="type-${item.id}"]:checked`).value;
+
+    if (!name) return flashError('Name is required.');
+    if (!condition) return flashError('Condition is required.');
+    if (marks === '' || Number(marks) < 0) return flashError('Max marks must be 0 or higher.');
+
+    updateItem(item.id, { name, condition, type, max_marks: Number(marks) });
+    renderAll();
+    toast('Saved.', 'success');
+  });
+
+  form.querySelector('.cancel-edit-btn').addEventListener('click', () => {
+    form.style.display = 'none';
+    form.closest('.rubric-card')?.classList.remove('editing');
+  });
+
+  return form;
+}
+
+/* ── Footer ──────────────────────────────────────────────── */
+function updateFooter(count, total) {
+  document.getElementById('item-count').textContent =
+    count === 0 ? 'No items' : `${count} item${count !== 1 ? 's' : ''}`;
+  document.getElementById('total-display').textContent = total;
+}
+
+/* ── Add form reset ──────────────────────────────────────── */
+function clearAddForm() {
+  document.getElementById('add-name').value = '';
+  document.getElementById('add-marks').value = '';
+  document.getElementById('add-condition').value = '';
+  document.querySelector('input[name="add-type"][value="static"]').checked = true;
+}
+
+/* ── Utility: HTML escape ────────────────────────────────── */
+function esc(str) {
+  return String(str ?? '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ── Toast ───────────────────────────────────────────────── */
+let toastTimer;
+function toast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.className = '', 2400);
+}
+function flashError(msg) { toast(msg, 'error'); }
+
+/* ── Confirm dialog ──────────────────────────────────────── */
+let confirmCallback = null;
+const overlay = document.getElementById('confirm-overlay');
+
+function confirm(title, body, cb) {
+  document.getElementById('confirm-title').textContent = title;
+  document.getElementById('confirm-body').textContent  = body;
+  confirmCallback = cb;
+  overlay.classList.add('open');
+}
+document.getElementById('confirm-cancel').addEventListener('click', () => overlay.classList.remove('open'));
+document.getElementById('confirm-ok').addEventListener('click', () => {
+  overlay.classList.remove('open');
+  if (confirmCallback) { confirmCallback(); confirmCallback = null; }
+});
+overlay.addEventListener('click', e => { if (e.target === overlay) overlay.classList.remove('open'); });
+</script>
+</body>
+</html>
