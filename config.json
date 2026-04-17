@@ -1,0 +1,12 @@
+{
+  "submissions_dir": "./submissions",
+  "rubric_file": "./rubric.json",
+  "output_csv": "./results.csv",
+  "id_extraction": {
+    "strategy": "before_first_underscore",
+    "comment": "Supported strategies: 'before_first_underscore', 'after_last_underscore', 'whole_filename', 'regex'",
+    "regex": "^([^_]+)"
+  },
+  "compile_timeout_seconds": 10,
+  "run_timeout_seconds": 2
+}

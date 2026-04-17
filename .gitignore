@@ -1,0 +1,6 @@
+results.csv
+submissions/
+__pycache__/
+*.pyc
+*.o
+a.out
