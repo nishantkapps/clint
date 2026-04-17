@@ -67,6 +67,10 @@ async function loadConfig() {
     document.getElementById('cfg-id-strategy').value = strat;
     if (cfg.id_extraction?.regex) document.getElementById('cfg-regex').value = cfg.id_extraction.regex;
     toggleRegexField(strat);
+    // LLM settings
+    if (cfg.llm_provider) document.getElementById('cfg-llm-provider').value = cfg.llm_provider;
+    if (cfg.llm_model)    document.getElementById('cfg-llm-model').value    = cfg.llm_model;
+    if (cfg.llm_api_key)  document.getElementById('cfg-llm-key').value      = cfg.llm_api_key;
   } catch (_) {}
 }
 
@@ -82,6 +86,9 @@ async function saveConfig() {
     },
     compile_timeout_seconds: 10,
     run_timeout_seconds: 2,
+    llm_provider: document.getElementById('cfg-llm-provider').value || 'anthropic',
+    llm_model:    document.getElementById('cfg-llm-model').value    || 'claude-3-haiku-20240307',
+    llm_api_key:  document.getElementById('cfg-llm-key').value      || '',
   };
   try {
     await fetch(`${SERVER}/api/config`, {
@@ -257,19 +264,50 @@ function renderTable(headers, rows) {
 
   title.textContent = `Results — ${rows.length} student${rows.length !== 1 ? 's' : ''}`;
 
+  // Fixed columns that are never rubric-score columns
+  const fixedCols    = new Set(['Student_ID','File','Compiles','Compile_Error','Total_Score','Max_Score','Feedback']);
+  const compilesIdx  = headers.indexOf('Compiles');
+  const totalIdx     = headers.indexOf('Total_Score');
+  const maxIdx       = headers.indexOf('Max_Score');
+
+  // Determine per-rubric-item max marks from the first row (stored in Max_Score split isn't available,
+  // so we colour by ratio: 0=red, full=green, partial=orange)
+  const rubricCols = headers.filter(h => !fixedCols.has(h));
+
+  // Per-column max (from all rows)
+  const colMax = {};
+  rubricCols.forEach(h => {
+    colMax[h] = Math.max(...rows.map(r => Number(r[h]) || 0));
+  });
+
   // Header
-  thead.innerHTML = '<tr>' + headers.map(h => `<th>${esc(h)}</th>`).join('') + '</tr>';
+  thead.innerHTML = '<tr>' + headers.map(h => `<th>${esc(h.replace(/_/g,' '))}</th>`).join('') + '</tr>';
 
   // Body
-  const compilesIdx = headers.indexOf('Compiles');
   tbody.innerHTML = rows.map(row => {
     const cells = headers.map((h, i) => {
       let val = row[h] ?? '';
       let cls = '';
+      let display = esc(val);
+
       if (i === compilesIdx) {
         cls = val === 'Y' ? 'compile-y' : val === 'N' ? 'compile-n' : '';
+      } else if (rubricCols.includes(h) && val !== '') {
+        const n = Number(val);
+        const max = colMax[h] || 1;
+        const ratio = n / max;
+        cls = ratio >= 1 ? 'score-full' : ratio > 0 ? 'score-partial' : 'score-zero';
+        display = `${n}<span class="score-max">/${max}</span>`;
+      } else if (i === totalIdx && maxIdx !== -1) {
+        const total = Number(val) || 0;
+        const max   = Number(row['Max_Score']) || 1;
+        const pct   = Math.round(total / max * 100);
+        display = `${total} <span class="score-max">(${pct}%)</span>`;
+      } else if (h === 'Compile_Error' || h === 'Feedback') {
+        display = val ? `<span title="${esc(val)}" style="cursor:help">⚠ hover</span>` : '';
       }
-      return `<td class="${cls}" title="${esc(val)}">${esc(val)}</td>`;
+
+      return `<td class="${cls}" title="${esc(String(val))}">${display}</td>`;
     });
     return '<tr>' + cells.join('') + '</tr>';
   }).join('');

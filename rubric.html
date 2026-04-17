@@ -100,6 +100,11 @@
           </label>
         </div>
       </div>
+      <!-- Patterns — shown only for static type -->
+      <div class="form-group full-width" id="add-patterns-group">
+        <label>PATTERNS <span style="color:var(--text-muted);font-weight:400;text-transform:none">(one regex per line — grader checks all must match for full marks)</span></label>
+        <textarea id="add-patterns" rows="3" placeholder="#include.*stdio\.h&#10;malloc\s*\(&#10;free\s*\("></textarea>
+      </div>
       <!-- Actions -->
       <div class="form-actions">
         <button class="btn btn-primary" id="btn-save-add">Save Item</button>
@@ -152,6 +157,18 @@ const labInput = document.getElementById('lab-name');
 labInput.value = getState().lab;
 labInput.addEventListener('input', () => setLab(labInput.value));
 
+/* ── Show/hide patterns field based on type ──────────────── */
+function syncPatternsVisibility(typeRadioName, patternsGroupId) {
+  const selected = document.querySelector(`input[name="${typeRadioName}"]:checked`)?.value;
+  const group = document.getElementById(patternsGroupId);
+  if (group) group.style.display = selected === 'static' ? 'flex' : 'none';
+}
+
+document.querySelectorAll('input[name="add-type"]').forEach(r =>
+  r.addEventListener('change', () => syncPatternsVisibility('add-type', 'add-patterns-group'))
+);
+syncPatternsVisibility('add-type', 'add-patterns-group');
+
 /* ── Add panel toggle ────────────────────────────────────── */
 const addPanel = document.getElementById('add-panel');
 
@@ -172,11 +189,16 @@ document.getElementById('btn-save-add').addEventListener('click', () => {
   const condition = document.getElementById('add-condition').value.trim();
   const type      = document.querySelector('input[name="add-type"]:checked').value;
 
+  const patternsRaw = document.getElementById('add-patterns').value.trim();
+  const patterns = type === 'static'
+    ? patternsRaw.split('\n').map(p => p.trim()).filter(Boolean)
+    : [];
+
   if (!name) return flashError('Name is required.');
   if (!condition) return flashError('Condition is required.');
   if (marks === '' || Number(marks) < 0) return flashError('Max marks must be 0 or higher.');
 
-  addItem({ name, condition, type, max_marks: Number(marks) });
+  addItem({ name, condition, type, max_marks: Number(marks), patterns });
   addPanel.classList.remove('open');
   clearAddForm();
   renderAll();
@@ -337,6 +359,9 @@ function buildCard(item, idx) {
 function buildInlineForm(item) {
   const form = document.createElement('div');
   form.className = 'edit-form';
+  const existingPatterns = Array.isArray(item.patterns) ? item.patterns.join('\n') : '';
+  const patternsVisible  = item.type === 'static' ? '' : 'display:none';
+
   form.innerHTML = `
     <div class="form-group">
       <label>NAME</label>
@@ -367,22 +392,41 @@ function buildInlineForm(item) {
         </label>
       </div>
     </div>
+    <div class="form-group full-width edit-patterns-group" style="${patternsVisible}">
+      <label>PATTERNS <span style="color:var(--text-muted);font-weight:400;text-transform:none">(one regex per line)</span></label>
+      <textarea data-field="patterns" rows="3" placeholder="#include.*stdio\.h&#10;malloc\s*\(">${esc(existingPatterns)}</textarea>
+    </div>
     <div class="form-actions">
       <button class="btn btn-success btn-sm save-edit-btn">Save</button>
       <button class="btn btn-ghost btn-sm cancel-edit-btn">Cancel</button>
     </div>`;
 
+  // Wire type radio → show/hide patterns in this inline form
+  form.querySelectorAll(`input[name="type-${item.id}"]`).forEach(r =>
+    r.addEventListener('change', () => {
+      const pg = form.querySelector('.edit-patterns-group');
+      if (pg) pg.style.display = r.value === 'static' && r.checked ? 'flex' : pg.style.display;
+      // re-evaluate all
+      const sel = form.querySelector(`input[name="type-${item.id}"]:checked`)?.value;
+      if (pg) pg.style.display = sel === 'static' ? 'flex' : 'none';
+    })
+  );
+
   form.querySelector('.save-edit-btn').addEventListener('click', () => {
-    const name      = form.querySelector('[data-field="name"]').value.trim();
-    const marks     = form.querySelector('[data-field="max_marks"]').value;
-    const condition = form.querySelector('[data-field="condition"]').value.trim();
-    const type      = form.querySelector(`input[name="type-${item.id}"]:checked`).value;
+    const name         = form.querySelector('[data-field="name"]').value.trim();
+    const marks        = form.querySelector('[data-field="max_marks"]').value;
+    const condition    = form.querySelector('[data-field="condition"]').value.trim();
+    const type         = form.querySelector(`input[name="type-${item.id}"]:checked`).value;
+    const patternsRaw  = form.querySelector('[data-field="patterns"]')?.value.trim() || '';
+    const patterns     = type === 'static'
+      ? patternsRaw.split('\n').map(p => p.trim()).filter(Boolean)
+      : [];
 
     if (!name) return flashError('Name is required.');
     if (!condition) return flashError('Condition is required.');
     if (marks === '' || Number(marks) < 0) return flashError('Max marks must be 0 or higher.');
 
-    updateItem(item.id, { name, condition, type, max_marks: Number(marks) });
+    updateItem(item.id, { name, condition, type, max_marks: Number(marks), patterns });
     renderAll();
     toast('Saved.', 'success');
   });
@@ -407,7 +451,9 @@ function clearAddForm() {
   document.getElementById('add-name').value = '';
   document.getElementById('add-marks').value = '';
   document.getElementById('add-condition').value = '';
+  document.getElementById('add-patterns').value = '';
   document.querySelector('input[name="add-type"][value="static"]').checked = true;
+  syncPatternsVisibility('add-type', 'add-patterns-group');
 }
 
 /* ── Utility: HTML escape ────────────────────────────────── */

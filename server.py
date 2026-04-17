@@ -74,8 +74,14 @@ def save_config():
     """Update config.json from the UI."""
     data = request.get_json(force=True)
     cfg_path = BASE_DIR / DEFAULT_CONFIG
+    # Preserve any keys already in the file that the UI doesn't know about
+    existing = {}
+    if cfg_path.exists():
+        with open(cfg_path) as f:
+            existing = json.load(f)
+    existing.update(data)
     with open(cfg_path, "w") as f:
-        json.dump(data, f, indent=2)
+        json.dump(existing, f, indent=2)
     return jsonify({"ok": True})
 
 

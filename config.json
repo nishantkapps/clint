@@ -2,11 +2,15 @@
   "submissions_dir": "./submissions",
   "rubric_file": "./rubric.json",
   "output_csv": "./results.csv",
+  "tests_dir": "./test_cases",
   "id_extraction": {
     "strategy": "before_first_underscore",
-    "comment": "Supported strategies: 'before_first_underscore', 'after_last_underscore', 'whole_filename', 'regex'",
+    "comment": "Strategies: before_first_underscore | after_last_underscore | whole_filename | regex",
     "regex": "^([^_]+)"
   },
   "compile_timeout_seconds": 10,
-  "run_timeout_seconds": 2
+  "run_timeout_seconds": 2,
+  "llm_provider": "anthropic",
+  "llm_model": "claude-3-haiku-20240307",
+  "llm_api_key": ""
 }
