@@ -1,0 +1,30 @@
+{
+  "lab": "Lab 1 - C Basics",
+  "created": "2026-04-17",
+  "items": [
+    {
+      "id": "header_files_001",
+      "name": "Header_Files",
+      "condition": "Must include stdio.h and stdlib.h",
+      "type": "static",
+      "max_marks": 2,
+      "patterns": ["#include\\s*[<\"]stdio\\.h[>\"]", "#include\\s*[<\"]stdlib\\.h[>\"]"]
+    },
+    {
+      "id": "memory_mgmt_002",
+      "name": "Memory_Management",
+      "condition": "Uses malloc and free correctly — no memory leaks",
+      "type": "static",
+      "max_marks": 5,
+      "patterns": ["malloc\\s*\\(", "free\\s*\\("]
+    },
+    {
+      "id": "output_003",
+      "name": "Print_Output",
+      "condition": "Uses printf to print output",
+      "type": "static",
+      "max_marks": 3,
+      "patterns": ["printf\\s*\\("]
+    }
+  ]
+}
