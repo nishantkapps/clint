@@ -1,5 +1,3 @@
-pyyaml>=6.0
-pandas>=2.0
-litellm>=1.30
 flask>=3.0
 flask-cors>=4.0
+pyyaml>=6.0

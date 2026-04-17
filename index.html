@@ -3,10 +3,185 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>C-Lab Autograder</title>
+  <title>Grader — C-Lab Autograder</title>
   <link rel="stylesheet" href="css/style.css?v=2" />
+  <style>
+    /* ── Grader-specific styles ─────────────────────────── */
+
+    .server-banner {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 18px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      margin-bottom: 24px;
+      font-size: .85rem;
+    }
+    .server-banner .dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: #ccc;
+      transition: background .3s;
+    }
+    .server-banner.connected .dot  { background: var(--success); }
+    .server-banner.error     .dot  { background: var(--danger); }
+    .server-banner .banner-text    { flex: 1; }
+    .server-banner .banner-url     { color: var(--text-muted); font-family: monospace; font-size: .8rem; }
+
+    /* ── Config panel ───────────────────────────────────── */
+    .config-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 24px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    .config-panel h3 {
+      grid-column: 1 / -1;
+      font-size: .9rem;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+      font-weight: 600;
+      letter-spacing: .3px;
+    }
+    .config-panel .form-group label { text-transform: uppercase; }
+
+    /* ── Run section ────────────────────────────────────── */
+    .run-section {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    .btn-run {
+      font-size: 1rem;
+      padding: 12px 32px;
+      border-radius: 8px;
+    }
+    .run-meta { color: var(--text-muted); font-size: .85rem; }
+
+    /* ── Progress log ───────────────────────────────────── */
+    .log-box {
+      background: #1e2030;
+      border: 1px solid #2e3248;
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      font-family: 'Courier New', monospace;
+      font-size: .8rem;
+      line-height: 1.7;
+      color: #c8ccd8;
+      max-height: 320px;
+      overflow-y: auto;
+      margin-bottom: 24px;
+      display: none;
+    }
+    .log-box.visible { display: block; }
+    .log-line.ok     { color: #4caf7d; }
+    .log-line.err    { color: #e05c5c; }
+    .log-line.info   { color: #8a8fa8; }
+    .log-line.bold   { color: #e8eaf0; font-weight: bold; }
+
+    /* ── Progress bar ───────────────────────────────────── */
+    .progress-wrap {
+      margin-bottom: 20px;
+      display: none;
+    }
+    .progress-wrap.visible { display: block; }
+    .progress-label {
+      font-size: .82rem;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .progress-bar-track {
+      height: 6px;
+      background: var(--surface2);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 3px;
+      width: 0%;
+      transition: width .3s;
+    }
+
+    /* ── Results section ────────────────────────────────── */
+    .results-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .results-header h2 { font-size: 1.05rem; }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      margin-bottom: 80px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .84rem;
+      min-width: 500px;
+    }
+    thead th {
+      background: var(--surface2);
+      padding: 10px 14px;
+      text-align: left;
+      font-weight: 600;
+      font-size: .78rem;
+      letter-spacing: .3px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    tbody tr { border-bottom: 1px solid var(--border); }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--surface2); }
+    tbody td {
+      padding: 10px 14px;
+      color: var(--text);
+      white-space: nowrap;
+      max-width: 260px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .compile-y { color: var(--success); font-weight: 700; }
+    .compile-n { color: var(--danger);  font-weight: 700; }
+
+    .empty-results {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-muted);
+      font-size: .9rem;
+    }
+    .empty-results strong {
+      display: block;
+      font-size: 1rem;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+  </style>
 </head>
 <body>
+
+<!-- ── Nav ──────────────────────────────────────────────── -->
 <nav class="navbar">
   <a class="logo" href="index.html">C-Lab <span>Autograder</span></a>
   <div class="nav-links">
@@ -14,11 +189,111 @@
     <a href="index.html" class="active">Grade</a>
   </div>
 </nav>
+
+<!-- ── Page ─────────────────────────────────────────────── -->
 <main class="page">
   <div class="page-header">
     <h1>Grader</h1>
-    <p>Coming soon — start by building your <a href="rubric.html" style="color:var(--accent)">rubric</a>.</p>
+    <p>Run GCC against all student submissions and generate a results CSV.</p>
   </div>
+
+  <!-- Server status banner -->
+  <div class="server-banner" id="server-banner">
+    <div class="dot" id="server-dot"></div>
+    <div class="banner-text">
+      <span id="server-status-text">Checking for local grader server…</span><br>
+      <span class="banner-url">http://localhost:5001</span>
+    </div>
+    <button class="btn btn-ghost btn-sm" id="btn-retry-connect">Retry</button>
+  </div>
+
+  <!-- Config panel -->
+  <div class="config-panel" id="config-panel">
+    <h3>Paths</h3>
+    <div class="form-group">
+      <label>Submissions folder</label>
+      <input id="cfg-submissions" type="text" placeholder="./submissions" />
+    </div>
+    <div class="form-group">
+      <label>Rubric JSON</label>
+      <input id="cfg-rubric" type="text" placeholder="./rubric.json" />
+    </div>
+    <div class="form-group">
+      <label>Output CSV</label>
+      <input id="cfg-output" type="text" placeholder="./results.csv" />
+    </div>
+    <div class="form-group">
+      <label>ID extraction</label>
+      <select id="cfg-id-strategy">
+        <option value="before_first_underscore">Before first _ (e.g. ID_lab1.c)</option>
+        <option value="after_last_underscore">After last _ (e.g. lab1_ID.c)</option>
+        <option value="whole_filename">Whole filename (e.g. ID.c)</option>
+        <option value="regex">Custom regex</option>
+      </select>
+    </div>
+    <div class="form-group" id="regex-group" style="display:none">
+      <label>Regex pattern</label>
+      <input id="cfg-regex" type="text" placeholder="^([^_]+)" />
+    </div>
+  </div>
+
+  <!-- Run controls -->
+  <div class="run-section">
+    <button class="btn btn-primary btn-run" id="btn-run" disabled>
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style="margin-right:4px">
+        <path d="M4 3l10 5-10 5V3z" fill="currentColor"/>
+      </svg>
+      Run Grader
+    </button>
+    <span class="run-meta" id="run-meta">Connect the local server to enable grading.</span>
+  </div>
+
+  <!-- Progress bar -->
+  <div class="progress-wrap" id="progress-wrap">
+    <div class="progress-label">
+      <span id="progress-label-text">Running…</span>
+      <span id="progress-pct">0%</span>
+    </div>
+    <div class="progress-bar-track">
+      <div class="progress-bar-fill" id="progress-fill"></div>
+    </div>
+  </div>
+
+  <!-- Live log -->
+  <div class="log-box" id="log-box"></div>
+
+  <!-- Results -->
+  <div id="results-section" style="display:none">
+    <div class="results-header">
+      <h2 id="results-title">Results</h2>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-ghost btn-sm" id="btn-refresh-results">Refresh</button>
+        <button class="btn btn-primary btn-sm" id="btn-download-csv">
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none" style="margin-right:4px">
+            <path d="M2 10V12h10v-2M7 9V2M4 5l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Download CSV
+        </button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table id="results-table">
+        <thead id="results-thead"></thead>
+        <tbody id="results-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="empty-results" id="empty-results">
+    <strong>No results yet</strong>
+    Run the grader to see student results here.
+  </div>
+
 </main>
+
+<!-- ── Toast ────────────────────────────────────────────── -->
+<div id="toast"></div>
+
+<script src="js/app.js?v=2"></script>
 </body>
 </html>
