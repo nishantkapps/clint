@@ -84,14 +84,16 @@ function loadFromStorage() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       state = JSON.parse(raw);
-    } else {
-      // First visit — seed with defaults so the editor isn't empty
-      state = JSON.parse(JSON.stringify(DEFAULT_RUBRIC)); // deep copy
+    }
+    // Seed defaults if nothing is saved OR saved state has no items
+    if (!state.items || state.items.length === 0) {
+      state = JSON.parse(JSON.stringify(DEFAULT_RUBRIC));
       state.created = new Date().toISOString().slice(0, 10);
       saveToStorage();
     }
   } catch (_) {
     state = JSON.parse(JSON.stringify(DEFAULT_RUBRIC));
+    saveToStorage();
   }
 }
 
