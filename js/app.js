@@ -3,7 +3,8 @@
  * Talks to the local companion server at http://localhost:5001
  */
 
-const SERVER = 'http://localhost:5001';
+const SERVER_KEY = 'clint_server_url';
+let SERVER = localStorage.getItem(SERVER_KEY) || 'http://localhost:5001';
 
 /* ── State ───────────────────────────────────────────────── */
 let connected   = false;
@@ -45,15 +46,45 @@ function setConnected(ok) {
   connected = ok;
   banner.className = 'server-banner ' + (ok ? 'connected' : 'error');
   statusText.textContent = ok
-    ? 'Local grader server is running — ready to grade.'
-    : 'Local grader server not found. Run: python3 server.py';
+    ? 'Grader server is running — ready to grade.'
+    : 'Grader server not found. Check the URL or run: python3 server.py';
+  document.getElementById('server-url-display').textContent = SERVER;
   btnRun.disabled = !ok || running;
   runMeta.textContent = ok
-    ? 'Submissions folder and rubric are loaded from config.json.'
-    : 'Connect the local server to enable grading.';
+    ? 'Submissions folder and rubric are loaded from config.json on the server.'
+    : 'Connect to the grader server to enable grading.';
 }
 
 document.getElementById('btn-retry-connect').addEventListener('click', checkServer);
+
+/* ── Server URL editor ───────────────────────────────────── */
+const urlEditor = document.getElementById('server-url-editor');
+const urlInput  = document.getElementById('server-url-input');
+
+document.getElementById('btn-change-url').addEventListener('click', () => {
+  urlInput.value = SERVER;
+  urlEditor.style.display = urlEditor.style.display === 'none' ? 'block' : 'none';
+  if (urlEditor.style.display !== 'none') urlInput.focus();
+});
+
+document.getElementById('btn-cancel-url').addEventListener('click', () => {
+  urlEditor.style.display = 'none';
+});
+
+document.getElementById('btn-save-url').addEventListener('click', () => {
+  const val = urlInput.value.trim().replace(/\/$/, '');
+  if (!val) return;
+  SERVER = val;
+  localStorage.setItem(SERVER_KEY, SERVER);
+  urlEditor.style.display = 'none';
+  setConnected(false);
+  checkServer();
+});
+
+urlInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('btn-save-url').click();
+  if (e.key === 'Escape') document.getElementById('btn-cancel-url').click();
+});
 
 /* ── Config ──────────────────────────────────────────────── */
 

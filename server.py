@@ -236,22 +236,30 @@ def status():
 
 def main():
     parser = argparse.ArgumentParser(description="C-Lab grader companion server")
-    parser.add_argument("--port",   type=int, default=5001, help="Port to listen on (default 5001)")
-    parser.add_argument("--config", default=DEFAULT_CONFIG, help="Path to config.json")
+    parser.add_argument("--port",   type=int, default=5001,       help="Port to listen on (default 5001)")
+    parser.add_argument("--host",   default="127.0.0.1",          help="Host to bind (use 0.0.0.0 for remote access)")
+    parser.add_argument("--config", default=DEFAULT_CONFIG,        help="Path to config.json")
     args = parser.parse_args()
 
-    print("=" * 56)
-    print("  C-Lab Autograder — Local Companion Server")
-    print("=" * 56)
-    print(f"  Listening on:  http://localhost:{args.port}")
+    display_host = args.host if args.host != "0.0.0.0" else "<your-server-ip>"
+
+    print("=" * 60)
+    print("  C-Lab Autograder — Companion Server")
+    print("=" * 60)
+    print(f"  Listening on:  http://{display_host}:{args.port}")
     print(f"  Config file:   {args.config}")
     print(f"  Submissions:   {BASE_DIR / 'submissions'}")
+    if args.host == "0.0.0.0":
+        print()
+        print("  Remote access enabled.")
+        print(f"  Enter  http://<this-server-ip>:{args.port}  in the")
+        print("  'Server URL' field on the Grader page.")
     print()
     print("  Keep this terminal open while using the web app.")
     print("  Press Ctrl+C to stop.")
-    print("=" * 56)
+    print("=" * 60)
 
-    app.run(host="127.0.0.1", port=args.port, debug=False, threaded=True)
+    app.run(host=args.host, port=args.port, debug=False, threaded=True)
 
 
 if __name__ == "__main__":

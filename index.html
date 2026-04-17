@@ -231,10 +231,26 @@
   <div class="server-banner" id="server-banner">
     <div class="dot" id="server-dot"></div>
     <div class="banner-text">
-      <span id="server-status-text">Checking for local grader server…</span><br>
-      <span class="banner-url">http://localhost:5001</span>
+      <span id="server-status-text">Checking for grader server…</span><br>
+      <span class="banner-url" id="server-url-display">http://localhost:5001</span>
     </div>
+    <button class="btn btn-ghost btn-sm" id="btn-change-url" title="Change server URL" style="font-size:.75rem;padding:4px 10px">Change URL</button>
     <button class="btn btn-ghost btn-sm" id="btn-retry-connect">Retry</button>
+  </div>
+
+  <!-- Server URL editor (hidden by default) -->
+  <div id="server-url-editor" style="display:none;margin-bottom:16px">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <label style="font-size:.82rem;color:var(--text-muted);white-space:nowrap">Server URL</label>
+      <input id="server-url-input" type="text" placeholder="http://localhost:5001"
+        style="flex:1;min-width:220px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.9rem;padding:7px 12px;outline:none;font-family:monospace" />
+      <button class="btn btn-primary btn-sm" id="btn-save-url">Connect</button>
+      <button class="btn btn-ghost btn-sm" id="btn-cancel-url">Cancel</button>
+      <span style="font-size:.78rem;color:var(--text-muted);width:100%">
+        Local machine: <code>http://localhost:5001</code> &nbsp;|&nbsp;
+        Remote server: <code>http://&lt;server-ip&gt;:5001</code>
+      </span>
+    </div>
   </div>
 
   <!-- Config panel -->
