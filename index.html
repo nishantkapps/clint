@@ -87,6 +87,7 @@
     .log-line.err    { color: #e05c5c; }
     .log-line.info   { color: #8a8fa8; }
     .log-line.bold   { color: #e8eaf0; font-weight: bold; }
+    .log-line { white-space: pre-wrap; }
 
     /* ── Progress bar ───────────────────────────────────── */
     .progress-wrap {
@@ -259,6 +260,9 @@
       <span style="font-size:.78rem;color:var(--text-muted);width:100%">
         Local machine: <code>http://localhost:5001</code> &nbsp;|&nbsp;
         Remote server: <code>http://&lt;server-ip&gt;:5001</code>
+      </span>
+      <span style="font-size:.76rem;color:var(--warn);width:100%;line-height:1.45">
+        If this page is opened from <strong>https://</strong> (e.g. GitHub Pages) and your grader URL is <strong>http://</strong>, the browser often blocks requests — use <code>python3 -m http.server 8787</code> and open <code>http://localhost:8787/index.html</code> instead, or put the grader behind an <strong>https</strong> tunnel.
       </span>
     </div>
   </div>
@@ -468,6 +472,6 @@
 <!-- ── Toast ────────────────────────────────────────────── -->
 <div id="toast"></div>
 
-<script src="js/app.js?v=8"></script>
+<script src="js/app.js?v=9"></script>
 </body>
 </html>

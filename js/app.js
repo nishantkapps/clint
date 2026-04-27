@@ -95,7 +95,8 @@ async function loadConfig() {
     if (cfg.build_output_dir != null) document.getElementById('cfg-build-output').value = cfg.build_output_dir;
     if (cfg.rubric_file) document.getElementById('cfg-rubric').value = cfg.rubric_file;
     if (cfg.output_compile_csv) document.getElementById('cfg-output-compile').value = cfg.output_compile_csv;
-    if (cfg.output_execution_csv) document.getElementById('cfg-output-execution').value = cfg.output_execution_csv;
+    const outExecEl = document.getElementById('cfg-output-execution');
+    if (outExecEl && cfg.output_execution_csv) outExecEl.value = cfg.output_execution_csv;
     if (cfg.output_rubric_csv) document.getElementById('cfg-output-rubric').value = cfg.output_rubric_csv;
     const strat = cfg.id_extraction?.strategy || 'before_first_underscore';
     document.getElementById('cfg-id-strategy').value = strat;
@@ -125,7 +126,7 @@ async function saveConfig() {
     build_output_dir: document.getElementById('cfg-build-output').value || './output',
     rubric_file: document.getElementById('cfg-rubric').value || './rubric.json',
     output_compile_csv: document.getElementById('cfg-output-compile').value || './results_compile.csv',
-    output_execution_csv: document.getElementById('cfg-output-execution').value || './results_execution.csv',
+    output_execution_csv: (document.getElementById('cfg-output-execution')?.value ?? '') || './results_execution.csv',
     output_rubric_csv: document.getElementById('cfg-output-rubric').value || './results_rubric.csv',
     id_extraction: {
       strategy,
@@ -164,6 +165,27 @@ function toggleSuiteStrategyVisibility(on) {
 function toggleRegexField(strategy) {
   document.getElementById('regex-group').style.display =
     strategy === 'regex' ? 'flex' : 'none';
+}
+
+/** Extra lines when fetch() fails (NetworkError / Failed to fetch). */
+function fetchFailureHints() {
+  const lines = [
+    '— Is python3 server.py still running on that host and port?',
+    '— Use Change URL if the server moved; try Retry after starting the server.',
+  ];
+  try {
+    const pageHttps = /^https:/i.test(window.location.protocol || '');
+    const serverUrl = new URL(SERVER, window.location.href);
+    if (pageHttps && serverUrl.protocol === 'http:') {
+      lines.unshift(
+        '— Mixed content: this page is HTTPS but the grader URL is HTTP — the browser blocks that. '
+        + 'Serve the UI over HTTP (e.g. python3 -m http.server 8787 then http://localhost:8787/index.html) '
+        + 'or use an HTTPS URL for the grader (reverse proxy / tunnel).'
+      );
+    }
+  } catch (_) {}
+  lines.push('— Firewall/VPN: port 5001 (or your port) must be allowed to this browser.');
+  return lines.join('\n');
 }
 
 /* ── Rubric legend ───────────────────────────────────────── */
@@ -247,13 +269,24 @@ async function startPhase(mode) {
       body: JSON.stringify({}),
     });
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      appendLog(err.error || 'Failed to start.', 'err');
+      const bodyText = await res.text();
+      let detail = `HTTP ${res.status}`;
+      try {
+        const j = JSON.parse(bodyText);
+        if (j.error) detail = j.error;
+      } catch {
+        if (bodyText) detail += ` — ${bodyText.slice(0, 160).replace(/\s+/g, ' ')}`;
+      }
+      appendLog('Failed to start: ' + detail, 'err');
+      if (res.status === 404) {
+        appendLog('If you just updated the repo: pull the latest code and restart python3 server.py (this build needs /api/run-execution).', 'info');
+      }
       finishRun(false, btn, orig);
       return;
     }
   } catch (e) {
-    appendLog('Could not reach server: ' + e.message, 'err');
+    appendLog('Could not reach server: ' + (e && e.message ? e.message : String(e)), 'err');
+    appendLog(fetchFailureHints(), 'info');
     finishRun(false, btn, orig);
     return;
   }
