@@ -268,8 +268,10 @@ def compile_run_file(c_file: Path, config: dict) -> dict:
     stdin_text = config.get("stdin_for_run", "") or ""
     expected = config.get("expected_output", "") or ""
     exec_max = int(config.get("execution_max_marks", 10) or 10)
+    compile_max = int(config.get("compilation_max_marks", 5) or 5)
 
     compiles, compile_error, binary = compile_c_file(c_file, compile_timeout)
+    compilation_marks = compile_max if compiles else 0
 
     stdout, stderr, run_err = "", "", None
     exec_marks, match_pct, exec_note = 0, 0.0, ""
@@ -292,6 +294,8 @@ def compile_run_file(c_file: Path, config: dict) -> dict:
     return {
         "compiles": compiles,
         "compile_error": compile_error,
+        "compilation_marks": compilation_marks,
+        "compilation_max": compile_max,
         "stdout": stdout,
         "stderr": stderr,
         "run_error": run_err or "",
@@ -314,8 +318,9 @@ def compile_run_all(config: dict) -> list[dict]:
         return []
 
     exec_max = int(config.get("execution_max_marks", 10) or 10)
+    compile_max = int(config.get("compilation_max_marks", 5) or 5)
     print(f"Found {len(c_files)} submission(s) in '{submissions_dir}'")
-    print(f"Compile & run phase — execution max marks: {exec_max}")
+    print(f"Compile & run phase — compilation max: {compile_max}, execution max: {exec_max}")
     print()
 
     rows = []
@@ -324,11 +329,16 @@ def compile_run_all(config: dict) -> list[dict]:
         print(f"[{idx:>3}/{len(c_files)}] {sid:<25} ", end="", flush=True)
 
         r = compile_run_file(c_file, config)
-        flag = "✓ Compiles" if r["compiles"] else "✗ No compile"
+        cm, cx = r["compilation_marks"], r["compilation_max"]
         if r["compiles"] and r["run_error"]:
-            flag = "✓ Compiles  ✗ Run error"
+            flag = f"✓ Compiles  ✗ Run error  compile {cm}/{cx}"
         elif r["compiles"]:
-            flag += f"  exec {r['execution_marks']}/{exec_max} ({r['match_pct']}% match)"
+            flag = (
+                f"✓ Compiles  compile {cm}/{cx}  "
+                f"exec {r['execution_marks']}/{exec_max} ({r['match_pct']}% match)"
+            )
+        else:
+            flag = f"✗ No compile  compile {cm}/{cx}"
         print(flag, flush=True)
 
         rows.append({
@@ -336,6 +346,8 @@ def compile_run_all(config: dict) -> list[dict]:
             "File": c_file.name,
             "Compiles": "Y" if r["compiles"] else "N",
             "Compile_Error": "" if r["compiles"] else r["compile_error"],
+            "Compilation_Marks": r["compilation_marks"],
+            "Compilation_Max": r["compilation_max"],
             "Stdout": r["stdout"],
             "Stderr": r["stderr"],
             "Run_Error": r["run_error"] or "",
@@ -353,6 +365,7 @@ def export_compile_csv(results: list[dict], output_path: str):
         return
     fieldnames = [
         "Student_ID", "File", "Compiles", "Compile_Error",
+        "Compilation_Marks", "Compilation_Max",
         "Stdout", "Stderr", "Run_Error",
         "Execution_Marks", "Execution_Max", "Match_Pct", "Execution_Note",
     ]

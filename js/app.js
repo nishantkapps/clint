@@ -100,6 +100,9 @@ async function loadConfig() {
     if (cfg.llm_api_key) document.getElementById('cfg-llm-key').value = cfg.llm_api_key;
     if (cfg.stdin_for_run != null) document.getElementById('cfg-stdin').value = cfg.stdin_for_run;
     if (cfg.expected_output != null) document.getElementById('cfg-expected').value = cfg.expected_output;
+    if (cfg.compilation_max_marks != null) {
+      document.getElementById('cfg-compile-max').value = String(cfg.compilation_max_marks);
+    }
     if (cfg.execution_max_marks != null) document.getElementById('cfg-exec-max').value = String(cfg.execution_max_marks);
   } catch (_) {}
 }
@@ -122,6 +125,7 @@ async function saveConfig() {
     llm_api_key: document.getElementById('cfg-llm-key').value || '',
     stdin_for_run: document.getElementById('cfg-stdin').value,
     expected_output: document.getElementById('cfg-expected').value,
+    compilation_max_marks: Number(document.getElementById('cfg-compile-max').value) || 5,
     execution_max_marks: Number(document.getElementById('cfg-exec-max').value) || 10,
   };
   try {
@@ -352,6 +356,7 @@ function renderCompileTable(headers, rows) {
 
   const longCols = new Set(['Stdout', 'Stderr', 'Compile_Error', 'Execution_Note']);
   const compIdx = headers.indexOf('Compiles');
+  const compMaxIdx = headers.indexOf('Compilation_Max');
   const execM = headers.indexOf('Execution_Marks');
   const execMax = headers.indexOf('Execution_Max');
 
@@ -367,7 +372,13 @@ function renderCompileTable(headers, rows) {
         display = esc(String(val).slice(0, 100)) + '…';
       }
 
-      if (h === 'Execution_Marks' && execMax !== -1 && val !== '') {
+      if (h === 'Compilation_Marks' && compMaxIdx !== -1 && val !== '') {
+        const m = Number(val) || 0;
+        const mx = Number(row['Compilation_Max']) || 1;
+        const ratio = m / mx;
+        cls = ratio >= 1 ? 'score-full' : ratio > 0 ? 'score-partial' : 'score-zero';
+        display = `${m}<span class="score-max">/${mx}</span>`;
+      } else if (h === 'Execution_Marks' && execMax !== -1 && val !== '') {
         const m = Number(val) || 0;
         const mx = Number(row['Execution_Max']) || 1;
         const ratio = m / mx;

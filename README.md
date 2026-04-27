@@ -177,7 +177,7 @@ The app at https://nishantkapps.github.io/clint connects to `localhost:5001` whi
 | `results_compile.csv` (path: `output_compile_csv`) | **Run compile & execution** |
 | `results_rubric.csv` (path: `output_rubric_csv`) | **Run rubric scoring** |
 
-**Compile report columns:** `Student_ID`, `File`, `Compiles`, `Compile_Error`, `Stdout`, `Stderr`, `Run_Error`, `Execution_Marks`, `Execution_Max`, `Match_Pct`, `Execution_Note`
+**Compile report columns:** `Student_ID`, `File`, `Compiles`, `Compile_Error`, `Compilation_Marks`, `Compilation_Max`, `Stdout`, `Stderr`, `Run_Error`, `Execution_Marks`, `Execution_Max`, `Match_Pct`, `Execution_Note` (`Compilation_Marks` = full `Compilation_Max` if gcc succeeds, else 0)
 
 **Rubric report columns:** `Student_ID`, `File`, `Rubric_1`, `Rubric_2`, …, `Total_Score`, `Max_Score`, `Feedback` (compile status is not included — use the compile report for that.)
 
@@ -193,6 +193,7 @@ The app at https://nishantkapps.github.io/clint connects to `localhost:5001` whi
 | `output_rubric_csv` | `./results_rubric.csv` | Rubric-only report |
 | `stdin_for_run` | `""` | Text fed to stdin when running each compiled binary |
 | `expected_output` | `""` | Expected stdout for execution scoring (exact = full marks) |
+| `compilation_max_marks` | `5` | Max points for successful compilation (0 if compile fails) |
 | `execution_max_marks` | `10` | Max points for the execution / output match column |
 | `tests_dir` | `./test_cases` | Root folder for rubric `test`-type items |
 | `id_extraction.strategy` | `before_first_underscore` | How to extract student ID from filename |

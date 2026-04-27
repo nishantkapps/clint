@@ -6,6 +6,7 @@
   "tests_dir": "./test_cases",
   "stdin_for_run": "",
   "expected_output": "",
+  "compilation_max_marks": 5,
   "execution_max_marks": 10,
   "id_extraction": {
     "strategy": "before_first_underscore",
