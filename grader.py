@@ -2,15 +2,17 @@
 """
 grader.py — C-Lab Autograder (local runner)
 
-Three modes (run separately):
-  compile    Compile each .c → executable named like the source stem (no .c)
-  execution  Run existing binaries against test cases (suites or stdin/expected)
-  rubric     Score rubric items (static / llm / test) per submission
+Modes:
+  compile      Compile each .c → executable named like the source stem (no .c)
+  execution    Run existing binaries against test cases (suites or stdin/expected)
+  rubric       Score rubric items (static / llm / test) per submission
+  compile-run  Legacy alias: same as compile then execution (two CSVs)
 
 Usage:
     python3 grader.py --mode compile
     python3 grader.py --mode execution
     python3 grader.py --mode rubric
+    python3 grader.py --mode compile-run
     python3 grader.py --config config.json --mode compile
 """
 
@@ -655,9 +657,10 @@ def main():
     parser.add_argument("--rubric", help="Override rubric JSON file")
     parser.add_argument(
         "--mode",
-        choices=("compile", "execution", "rubric"),
+        choices=("compile", "execution", "rubric", "compile-run"),
         required=True,
-        help="compile: gcc only. execution: run binaries vs test cases. rubric: rubric items only.",
+        help="compile: gcc only. execution: run binaries vs test cases. rubric: rubric items only. "
+        "compile-run: compile then execution (legacy).",
     )
     args = parser.parse_args()
 
@@ -681,12 +684,18 @@ def main():
     out_execution = config.get("output_execution_csv", "./results_execution.csv")
     out_rubric = config.get("output_rubric_csv", "./results_rubric.csv")
 
-    if args.mode == "compile":
+    if args.mode in ("compile", "compile-run"):
         results = compile_only_all(config)
         if results:
             ok = sum(1 for r in results if r["Compiles"] == "Y")
             print(f"Summary: {ok}/{len(results)} compiled successfully.")
         export_compile_csv(results, out_compile)
+        if args.mode == "compile-run":
+            print("\n--- compile-run: execution phase ---\n")
+            results_e = execution_run_all(config)
+            if results_e:
+                print(f"Summary: {len(results_e)} submission(s) processed.")
+            export_execution_csv(results_e, out_execution)
 
     elif args.mode == "execution":
         results = execution_run_all(config)

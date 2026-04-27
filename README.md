@@ -235,6 +235,7 @@ python3 server.py --host 0.0.0.0 --port 5001
 python3 grader.py --mode compile
 python3 grader.py --mode execution
 python3 grader.py --mode rubric
+python3 grader.py --mode compile-run   # legacy: compile then execution (both CSVs)
 python3 grader.py --config config.json --mode compile
 
 # Update the app (pulls latest code and redeploys via GitHub Actions)
