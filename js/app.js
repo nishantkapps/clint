@@ -386,8 +386,7 @@ function renderRubricTable(headers, rows) {
 
   const thead = document.getElementById('rubric-thead');
   const tbody = document.getElementById('rubric-tbody');
-  const fixedCols = new Set(['Student_ID', 'File', 'Compiles', 'Compile_Error', 'Total_Score', 'Max_Score', 'Feedback']);
-  const compilesIdx = headers.indexOf('Compiles');
+  const fixedCols = new Set(['Student_ID', 'File', 'Total_Score', 'Max_Score', 'Feedback']);
   const totalIdx = headers.indexOf('Total_Score');
   const maxIdx = headers.indexOf('Max_Score');
   const rubricCols = headers.filter(h => !fixedCols.has(h));
@@ -405,8 +404,7 @@ function renderRubricTable(headers, rows) {
       let cls = '';
       let display = esc(String(val));
 
-      if (i === compilesIdx) cls = val === 'Y' ? 'compile-y' : val === 'N' ? 'compile-n' : '';
-      else if (rubricCols.includes(h) && val !== '') {
+      if (rubricCols.includes(h) && val !== '') {
         const n = Number(val);
         const max = colMax[h] || 1;
         const ratio = n / max;
@@ -417,7 +415,7 @@ function renderRubricTable(headers, rows) {
         const max = Number(row['Max_Score']) || 1;
         const pct = Math.round(total / max * 100);
         display = `${total} <span class="score-max">(${pct}%)</span>`;
-      } else if (h === 'Compile_Error' || h === 'Feedback') {
+      } else if (h === 'Feedback') {
         display = val ? `<span title="${esc(String(val))}" style="cursor:help">⚠ hover</span>` : '';
       }
       return `<td class="${cls}" title="${esc(String(val))}">${display}</td>`;

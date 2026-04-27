@@ -179,7 +179,7 @@ The app at https://nishantkapps.github.io/clint connects to `localhost:5001` whi
 
 **Compile report columns:** `Student_ID`, `File`, `Compiles`, `Compile_Error`, `Stdout`, `Stderr`, `Run_Error`, `Execution_Marks`, `Execution_Max`, `Match_Pct`, `Execution_Note`
 
-**Rubric report columns:** `Student_ID`, `File`, `Compiles`, `Compile_Error`, `Rubric_1`, `Rubric_2`, …, `Total_Score`, `Max_Score`, `Feedback`
+**Rubric report columns:** `Student_ID`, `File`, `Rubric_1`, `Rubric_2`, …, `Total_Score`, `Max_Score`, `Feedback` (compile status is not included — use the compile report for that.)
 
 ---
 

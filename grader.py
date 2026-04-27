@@ -441,8 +441,6 @@ def grade_rubric_all(config: dict, rubric_items: list[dict]) -> list[dict]:
         row = {
             "Student_ID": sid,
             "File": c_file.name,
-            "Compiles": "Y" if r["compiles"] else "N",
-            "Compile_Error": "" if r["compiles"] else r["compile_error"],
         }
         row.update(r["scores"])
         if rubric_items:
@@ -457,7 +455,7 @@ def export_rubric_csv(results: list[dict], output_path: str, rubric_items: list[
     if not results:
         print("[WARN] No rubric results to write.")
         return
-    fixed = ["Student_ID", "File", "Compiles", "Compile_Error"]
+    fixed = ["Student_ID", "File"]
     rubric_cols = [f"Rubric_{n}" for n in range(1, len(rubric_items) + 1)]
     trailing = (["Total_Score", "Max_Score", "Feedback"] if rubric_items else ["Feedback"])
     fieldnames = fixed + rubric_cols + trailing
