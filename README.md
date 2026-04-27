@@ -41,6 +41,7 @@ sudo apt-get install -y git gcc python3 python3-pip
 git clone https://github.com/nishantkapps/clint.git
 cd clint
 pip3 install flask flask-cors litellm
+cp config.example.json config.json   # local only — config.json is gitignored; never commit API keys
 ```
 
 ### 3. Place student submissions
@@ -188,7 +189,7 @@ The app at https://nishantkapps.github.io/clint connects to `localhost:5001` whi
 
 ---
 
-## Configuration (`config.json`)
+## Configuration (`config.json`, not committed)
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -254,7 +255,7 @@ clint/
 │   └── rubric.js           # Rubric editor logic
 ├── grader.py               # Modes: compile | execution | rubric
 ├── server.py               # Flask companion server
-├── config.json             # Runtime configuration
+├── config.example.json     # Copy to config.json (gitignored) — never commit API keys
 ├── rubric.json             # Active rubric (edit via rubric.html, then copy here)
 ├── output/                 # gcc -o executables kept here (git-ignored)
 ├── submissions/            # Drop student .c files here (git-ignored)

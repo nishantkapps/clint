@@ -10,7 +10,7 @@ A client-side web app hosted on GitHub Pages at `nishantkapps.github.io/clint` p
 - **Companion server** (`server.py`): Flask + CORS; exposes `/api/run-compile`, `/api/run-execution`, `/api/run-rubric`, `/api/stream`, `/api/results-compile`, `/api/results-execution`, `/api/results-rubric`, `/api/config`, `/api/rubric`, `/api/test-suites`
 - **Grader** (`grader.py`): Three modes — `--mode compile` runs `gcc file.c -o <build_output_dir>/<stem> -lm` only; `--mode execution` runs those binaries against file suites or `stdin_for_run` / `expected_output`; `--mode rubric` scores rubric items → `results_rubric.csv`. Executables stay under `build_output_dir` (default `./output`).
 - **localStorage**: Rubric editor state + default seed; Grader page stores **Server URL** (`clint_server_url`)
-- **config.json** (on server): paths, test suite flags, `stdin_for_run`, `expected_output`, `execution_max_marks`, LLM keys, CSV paths (`output_compile_csv`, `output_execution_csv`, `output_rubric_csv`)
+- **config.json** (on server, gitignored): copy from `config.example.json`; paths, test suite flags, LLM keys, CSV paths. Never commit real API keys — GitHub push protection will block the push.
 
 ## Key Commands
 
