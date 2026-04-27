@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Test cases — C-Lab Autograder</title>
+  <link rel="stylesheet" href="css/style.css?v=2" />
+  <style>
+    .suite-block {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+    .suite-block h2 {
+      font-size: 1rem;
+      margin: 0 0 14px;
+      color: var(--accent);
+    }
+    .case-card {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      margin-bottom: 12px;
+      background: var(--surface2);
+    }
+    .case-card .case-head {
+      font-size: .75rem;
+      text-transform: uppercase;
+      letter-spacing: .3px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+    .case-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 800px) {
+      .case-grid { grid-template-columns: 1fr; }
+    }
+    .case-grid label {
+      font-size: .72rem;
+      color: var(--text-muted);
+      display: block;
+      margin-bottom: 4px;
+    }
+    .case-grid textarea {
+      width: 100%;
+      min-height: 72px;
+      font-family: 'Courier New', monospace;
+      font-size: .82rem;
+    }
+    .suite-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-top: 8px;
+    }
+    .banner-tests {
+      font-size: .85rem;
+      color: var(--text-muted);
+      margin-bottom: 20px;
+      padding: 12px 16px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .banner-tests.error { border-color: var(--danger); color: var(--danger); }
+    .banner-tests.ok { border-color: var(--success); }
+    .tests-local-note {
+      font-size: .88rem;
+      color: var(--text-muted);
+      max-width: 52rem;
+      line-height: 1.55;
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-left: 3px solid var(--accent);
+      background: var(--surface2);
+      border-radius: 0 8px 8px 0;
+    }
+    .tests-local-note code { font-size: .85em; }
+  </style>
+</head>
+<body>
+
+<nav class="navbar">
+  <a class="logo" href="index.html">C-Lab <span>Autograder</span></a>
+  <div class="nav-links">
+    <a href="rubric.html">Rubric</a>
+    <a href="tests.html" class="active">Test cases</a>
+    <a href="index.html">Grade</a>
+  </div>
+</nav>
+
+<main class="page">
+  <div class="page-header">
+    <h1>Execution test cases</h1>
+    <p>Define stdin and expected stdout for each suite. Saving writes files next to <code>server.py</code> (under <code>test_suites/&lt;set&gt;/case_01.stdin</code> and <code>case_01.expected</code>, numbered in order).</p>
+    <p class="tests-local-note"><strong>Local server only.</strong> This page only talks to your companion API. <code>gcc</code>, running the compiled binary with those stdin values, and writing suite files all happen on the computer where you run <code>python3 server.py</code> — not on GitHub Pages and not inside the browser. Use the same server URL as on the Grade page (often <code>http://localhost:5001</code>).</p>
+  </div>
+
+  <div class="banner-tests" id="tests-banner">Connect to the grader server from the <a href="index.html">Grade</a> page (same URL as that server), then reload this page.</div>
+
+  <div id="suites-root"></div>
+</main>
+
+<div id="toast"></div>
+<script src="js/tests.js?v=2"></script>
+</body>
+</html>

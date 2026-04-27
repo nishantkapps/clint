@@ -14,6 +14,7 @@ import argparse
 import csv
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -244,6 +245,80 @@ def get_results_rubric():
     if not data:
         return jsonify({"error": "No rubric report yet — run 'Rubric scoring' first."}), 404
     return jsonify(data)
+
+
+def _load_config_dict() -> dict:
+    cfg_path = BASE_DIR / DEFAULT_CONFIG
+    if not cfg_path.exists():
+        return {}
+    with open(cfg_path) as f:
+        return json.load(f)
+
+
+def _test_suites_paths():
+    cfg = _load_config_dict()
+    root = (BASE_DIR / cfg.get("test_suites_root", "./test_suites")).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    names = cfg.get("test_suite_names") or ["set_1", "set_2", "set_3"]
+    return cfg, root, names
+
+
+@app.route("/api/test-suites", methods=["GET"])
+def list_test_suites():
+    """List all suites and their case_*.stdin / case_*.expected pairs."""
+    cfg, root, names = _test_suites_paths()
+    suites_out = []
+    for name in names:
+        d = root / name
+        d.mkdir(parents=True, exist_ok=True)
+        cases = []
+        for stdin_f in sorted(d.glob("case_*.stdin")):
+            stem = stdin_f.name[: -len(".stdin")]
+            exp_f = d / f"{stem}.expected"
+            cases.append({
+                "id": stem,
+                "stdin": stdin_f.read_text(errors="replace"),
+                "expected": exp_f.read_text(errors="replace") if exp_f.exists() else "",
+            })
+        suites_out.append({"name": name, "cases": cases})
+    return jsonify({
+        "suites": suites_out,
+        "test_suites_root": str(cfg.get("test_suites_root", "./test_suites")),
+        "test_suite_names": names,
+        "test_suite_strategy": cfg.get("test_suite_strategy", "mod3_id_charsum"),
+        "use_test_suites": bool(cfg.get("use_test_suites", False)),
+    })
+
+
+@app.route("/api/test-suites/<suite_name>", methods=["POST"])
+def save_test_suite(suite_name):
+    """Replace all cases in a suite with the posted list."""
+    if not re.match(r"^[a-zA-Z0-9_-]+$", suite_name):
+        return jsonify({"error": "Invalid suite name"}), 400
+    cfg, root, allowed = _test_suites_paths()
+    if suite_name not in set(allowed):
+        return jsonify({"error": f"Suite must be one of: {allowed}"}), 400
+    data = request.get_json(force=True)
+    cases = data.get("cases", [])
+    if not isinstance(cases, list):
+        return jsonify({"error": "cases must be a list"}), 400
+
+    d = root / suite_name
+    d.mkdir(parents=True, exist_ok=True)
+    for old in list(d.glob("case_*.stdin")) + list(d.glob("case_*.expected")):
+        try:
+            old.unlink()
+        except OSError:
+            pass
+
+    for i, case in enumerate(cases, start=1):
+        nid = f"case_{i:02d}"
+        stdin_txt = case.get("stdin", "") if isinstance(case, dict) else ""
+        exp_txt = case.get("expected", "") if isinstance(case, dict) else ""
+        (d / f"{nid}.stdin").write_text(stdin_txt or "", encoding="utf-8")
+        (d / f"{nid}.expected").write_text(exp_txt or "", encoding="utf-8")
+
+    return jsonify({"ok": True, "saved": len(cases)})
 
 
 @app.route("/api/status")

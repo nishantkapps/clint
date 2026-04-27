@@ -207,6 +207,14 @@
       color: var(--text);
       margin-bottom: 6px;
     }
+    .page-note {
+      font-size: .88rem;
+      color: var(--text-muted);
+      max-width: 52rem;
+      line-height: 1.5;
+      margin-top: 10px;
+    }
+    .page-note code { font-size: .85em; }
   </style>
 </head>
 <body>
@@ -216,6 +224,7 @@
   <a class="logo" href="index.html">C-Lab <span>Autograder</span></a>
   <div class="nav-links">
     <a href="rubric.html">Rubric</a>
+    <a href="tests.html">Test cases</a>
     <a href="index.html" class="active">Grade</a>
   </div>
 </nav>
@@ -225,6 +234,7 @@
   <div class="page-header">
     <h1>Grader</h1>
     <p>Compile and run student code in one step; score the rubric in a separate step. Two result tables, two CSV exports.</p>
+    <p class="page-note">Grading runs only on the companion server you connect to below (<code>python3 server.py</code> on your machine or a lab host). The browser triggers jobs and shows results; it does not compile or execute C. Put submissions where that server’s <code>config.json</code> points (usually next to <code>server.py</code>).</p>
   </div>
 
   <!-- Server status banner -->
@@ -311,6 +321,20 @@
   <!-- Program execution (used by compile-run phase) -->
   <div class="config-panel" id="execution-panel" style="grid-template-columns:1fr">
     <h3>Program execution <span style="font-weight:400;color:var(--text-muted)">(after successful compile)</span></h3>
+    <div class="form-group full-width" style="grid-column:1/-1;display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="cfg-use-test-suites" />
+        Use file-based test suites (three sets: set_1, set_2, set_3)
+      </label>
+      <span style="font-size:.8rem;color:var(--text-muted)">Each student is assigned a set from their ID (stable). <a href="tests.html">Edit stdin / expected per set</a> on the same machine as <code>server.py</code>.</span>
+    </div>
+    <div class="form-group full-width" id="cfg-suite-strategy-wrap" style="grid-column:1/-1;display:none;flex-direction:column;align-items:stretch;gap:6px">
+      <label>Suite assignment</label>
+      <select id="cfg-test-suite-strategy">
+        <option value="mod3_id_charsum">Sum of character codes of student ID mod 3</option>
+        <option value="mod3_id_numeric">Numeric part of student ID mod 3 (fallback: char sum)</option>
+      </select>
+    </div>
     <div class="form-group full-width" style="grid-column:1/-1">
       <label>Stdin (optional — fed to the program on each run)</label>
       <textarea id="cfg-stdin" rows="2" placeholder="Leave empty for no stdin"></textarea>
@@ -413,6 +437,6 @@
 <!-- ── Toast ────────────────────────────────────────────── -->
 <div id="toast"></div>
 
-<script src="js/app.js?v=6"></script>
+<script src="js/app.js?v=7"></script>
 </body>
 </html>

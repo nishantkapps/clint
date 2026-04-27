@@ -1,21 +1,29 @@
 {
-  "build_output_dir": "./output",
-  "submissions_dir": "./submissions",
+  "build_output_dir": "./submissions/test2/output",
+  "submissions_dir": "./submissions/test2",
   "rubric_file": "./rubric.json",
-  "output_compile_csv": "./results_compile.csv",
-  "output_rubric_csv": "./results_rubric.csv",
+  "output_compile_csv": "./submissions/test2/results_compile.csv",
+  "output_rubric_csv": "./submissions/test2/results_rubric.csv",
   "tests_dir": "./test_cases",
   "stdin_for_run": "",
   "expected_output": "",
   "compilation_max_marks": 5,
   "execution_max_marks": 10,
   "id_extraction": {
-    "strategy": "before_first_underscore",
+    "strategy": "whole_filename",
     "regex": "^([^_]+)"
   },
   "compile_timeout_seconds": 10,
   "run_timeout_seconds": 2,
   "llm_provider": "anthropic",
   "llm_model": "claude-3-haiku-20240307",
-  "llm_api_key": ""
+  "llm_api_key": "",
+  "test_suites_root": "./test_suites",
+  "test_suite_names": [
+    "set_1",
+    "set_2",
+    "set_3"
+  ],
+  "use_test_suites": false,
+  "test_suite_strategy": "mod3_id_charsum"
 }

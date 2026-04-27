@@ -105,6 +105,11 @@ async function loadConfig() {
       document.getElementById('cfg-compile-max').value = String(cfg.compilation_max_marks);
     }
     if (cfg.execution_max_marks != null) document.getElementById('cfg-exec-max').value = String(cfg.execution_max_marks);
+    const useSuites = Boolean(cfg.use_test_suites);
+    document.getElementById('cfg-use-test-suites').checked = useSuites;
+    document.getElementById('cfg-test-suite-strategy').value =
+      cfg.test_suite_strategy === 'mod3_id_numeric' ? 'mod3_id_numeric' : 'mod3_id_charsum';
+    toggleSuiteStrategyVisibility(useSuites);
   } catch (_) {}
 }
 
@@ -129,6 +134,8 @@ async function saveConfig() {
     expected_output: document.getElementById('cfg-expected').value,
     compilation_max_marks: Number(document.getElementById('cfg-compile-max').value) || 5,
     execution_max_marks: Number(document.getElementById('cfg-exec-max').value) || 10,
+    use_test_suites: document.getElementById('cfg-use-test-suites').checked,
+    test_suite_strategy: document.getElementById('cfg-test-suite-strategy').value,
   };
   try {
     await fetch(`${SERVER}/api/config`, {
@@ -142,6 +149,12 @@ async function saveConfig() {
 document.getElementById('cfg-id-strategy').addEventListener('change', e => {
   toggleRegexField(e.target.value);
 });
+document.getElementById('cfg-use-test-suites').addEventListener('change', e => {
+  toggleSuiteStrategyVisibility(e.target.checked);
+});
+function toggleSuiteStrategyVisibility(on) {
+  document.getElementById('cfg-suite-strategy-wrap').style.display = on ? 'flex' : 'none';
+}
 function toggleRegexField(strategy) {
   document.getElementById('regex-group').style.display =
     strategy === 'regex' ? 'flex' : 'none';

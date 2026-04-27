@@ -107,6 +107,79 @@ def compile_c_file(
         sys.exit(1)
 
 
+def test_suites_root(config: dict) -> Path:
+    return Path(config.get("test_suites_root", "./test_suites")).expanduser().resolve()
+
+
+def suite_names(config: dict) -> list[str]:
+    names = config.get("test_suite_names")
+    if isinstance(names, list) and len(names) >= 1:
+        return [str(x) for x in names]
+    return ["set_1", "set_2", "set_3"]
+
+
+def resolve_suite_name(student_id: str, config: dict) -> str:
+    """Map student ID to one of N named suites (e.g. 3 cohorts for different tests)."""
+    names = suite_names(config)
+    n = len(names)
+    strat = config.get("test_suite_strategy", "mod3_id_charsum")
+    if strat == "mod3_id_numeric":
+        digs = "".join(c for c in student_id if c.isdigit())
+        idx = (int(digs) % n) if digs else (sum(ord(c) for c in student_id) % n)
+    else:
+        idx = sum(ord(c) for c in student_id) % n
+    return names[idx]
+
+
+def load_suite_cases(suite_dir: Path) -> list[tuple[str, str]]:
+    """Pairs (stdin, expected) from case_01.stdin + case_01.expected, sorted."""
+    pairs: list[tuple[str, str]] = []
+    for stdin_f in sorted(suite_dir.glob("case_*.stdin")):
+        stem = stdin_f.name[: -len(".stdin")]
+        exp_f = suite_dir / f"{stem}.expected"
+        if not exp_f.exists():
+            continue
+        pairs.append((stdin_f.read_text(errors="replace"), exp_f.read_text(errors="replace")))
+    return pairs
+
+
+def run_suite_cases(
+    binary: Path,
+    cases: list[tuple[str, str]],
+    exec_max: int,
+    run_timeout: int,
+) -> tuple[int, float, str, str, str]:
+    """
+    Run each case; split exec_max across cases (integer caps that sum to exec_max when all pass).
+    Returns (total_marks, avg_match_pct, note, last_stdout, last_stderr).
+    """
+    if not cases:
+        return 0, 0.0, "No test cases in this suite.", "", ""
+
+    n = len(cases)
+    base, rem = divmod(exec_max, n)
+    caps = [base + (1 if i < rem else 0) for i in range(n)]
+
+    total_marks = 0
+    pcts: list[float] = []
+    parts: list[str] = []
+    last_out, last_err = "", ""
+
+    for i, ((stdin_txt, exp_txt), cap) in enumerate(zip(cases, caps), start=1):
+        out, err, re = run_binary(binary, stdin_txt or "", run_timeout)
+        last_out, last_err = out, err
+        if re:
+            parts.append(f"case{i}:run_err({re})")
+            continue
+        m, pct, _note = score_execution_match(out, exp_txt, cap)
+        total_marks += m
+        pcts.append(pct)
+        parts.append(f"case{i}:{m}/{cap}pts")
+
+    avg_pct = sum(pcts) / len(pcts) if pcts else 0.0
+    return total_marks, avg_pct, "; ".join(parts), last_out, last_err
+
+
 def run_binary(binary: Path, stdin_text: str, run_timeout: int) -> tuple[str, str, str | None]:
     """Returns (stdout, stderr, error_message_or_None)."""
     try:
@@ -294,27 +367,42 @@ def score_test(item: dict, binary: Path, tests_dir: Path, run_timeout: int) -> t
 
 # ── Phase: compile + run + execution score ────────────────────────────────────
 
-def compile_run_file(c_file: Path, config: dict) -> dict:
+def compile_run_file(c_file: Path, config: dict, student_id: str) -> dict:
     compile_timeout = config.get("compile_timeout_seconds", 10)
     run_timeout = config.get("run_timeout_seconds", 2)
     stdin_text = config.get("stdin_for_run", "") or ""
     expected = config.get("expected_output", "") or ""
     exec_max = int(config.get("execution_max_marks", 10) or 10)
     compile_max = int(config.get("compilation_max_marks", 5) or 5)
+    use_suites = bool(config.get("use_test_suites", False))
 
     compiles, compile_error, binary = compile_c_file(c_file, compile_timeout, config)
     compilation_marks = compile_max if compiles else 0
 
     stdout, stderr, run_err = "", "", None
     exec_marks, match_pct, exec_note = 0, 0.0, ""
+    suite_used = ""
 
     if compiles and binary:
-        stdout, stderr, run_err = run_binary(binary, stdin_text, run_timeout)
-        if run_err:
-            exec_note = run_err
-            exec_marks, match_pct = 0, 0.0
+        if use_suites:
+            suite_used = resolve_suite_name(student_id, config)
+            suite_dir = test_suites_root(config) / suite_used
+            cases = load_suite_cases(suite_dir)
+            if cases:
+                exec_marks, match_pct, exec_note, stdout, stderr = run_suite_cases(
+                    binary, cases, exec_max, run_timeout
+                )
+                run_err = ""
+            else:
+                exec_note = f"No case_*.stdin / case_*.expected in '{suite_dir}'."
+                run_err = ""
         else:
-            exec_marks, match_pct, exec_note = score_execution_match(stdout, expected, exec_max)
+            stdout, stderr, run_err = run_binary(binary, stdin_text, run_timeout)
+            if run_err:
+                exec_note = run_err
+                exec_marks, match_pct = 0, 0.0
+            else:
+                exec_marks, match_pct, exec_note = score_execution_match(stdout, expected, exec_max)
 
     return {
         "compiles": compiles,
@@ -328,6 +416,7 @@ def compile_run_file(c_file: Path, config: dict) -> dict:
         "execution_max": exec_max,
         "match_pct": match_pct,
         "execution_note": exec_note,
+        "test_suite": suite_used,
     }
 
 
@@ -348,6 +437,11 @@ def compile_run_all(config: dict) -> list[dict]:
     print(f"Found {len(c_files)} submission(s) in '{submissions_dir}'")
     print(f"gcc output dir: {build_dir}  (executable name = .c stem, e.g. IDNumber.c → IDNumber)")
     print(f"Compile & run phase — compilation max: {compile_max}, execution max: {exec_max}")
+    if bool(config.get("use_test_suites", False)):
+        print(
+            f"Test suites: {suite_names(config)}  root={test_suites_root(config)}  "
+            f"assignment={config.get('test_suite_strategy', 'mod3_id_charsum')}"
+        )
     print()
 
     rows = []
@@ -355,7 +449,7 @@ def compile_run_all(config: dict) -> list[dict]:
         sid = extract_student_id(c_file.name, strategy, regex_pat)
         print(f"[{idx:>3}/{len(c_files)}] {sid:<25} ", end="", flush=True)
 
-        r = compile_run_file(c_file, config)
+        r = compile_run_file(c_file, config, sid)
         cm, cx = r["compilation_marks"], r["compilation_max"]
         bin_rel = ""
         if r["compiles"] and (build_dir / c_file.stem).exists():
@@ -372,6 +466,8 @@ def compile_run_all(config: dict) -> list[dict]:
             )
         else:
             flag = f"✗ No compile  compile {cm}/{cx}"
+        if bool(config.get("use_test_suites", False)) and r.get("test_suite"):
+            flag = f"{flag}  [{r['test_suite']}]"
         print(flag, flush=True)
 
         rows.append({
@@ -382,6 +478,7 @@ def compile_run_all(config: dict) -> list[dict]:
             "Compilation_Marks": r["compilation_marks"],
             "Compilation_Max": r["compilation_max"],
             "Binary_Path": bin_rel,
+            "Test_Suite": r.get("test_suite") or "",
             "Stdout": r["stdout"],
             "Stderr": r["stderr"],
             "Run_Error": r["run_error"] or "",
@@ -399,7 +496,7 @@ def export_compile_csv(results: list[dict], output_path: str):
         return
     fieldnames = [
         "Student_ID", "File", "Compiles", "Compile_Error",
-        "Compilation_Marks", "Compilation_Max", "Binary_Path",
+        "Compilation_Marks", "Compilation_Max", "Binary_Path", "Test_Suite",
         "Stdout", "Stderr", "Run_Error",
         "Execution_Marks", "Execution_Max", "Match_Pct", "Execution_Note",
     ]
