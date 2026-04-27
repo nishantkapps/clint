@@ -3,7 +3,7 @@
  */
 
 const SERVER_KEY = 'clint_server_url';
-let SERVER = localStorage.getItem(SERVER_KEY) || 'http://localhost:5001';
+let SERVER = (localStorage.getItem(SERVER_KEY) || '').trim().replace(/\/$/, '') || 'http://localhost:5001';
 
 let connected = false;
 let running = false;
@@ -27,19 +27,50 @@ const progressPct = document.getElementById('progress-pct');
 
 /* ── Server ──────────────────────────────────────────────── */
 
-async function checkServer() {
+/** Bases to try for /api/ping (stored URL first, then this page’s origin, then common locals). */
+function serverCandidates() {
+  const stored = (localStorage.getItem(SERVER_KEY) || '').trim().replace(/\/$/, '');
+  let origin = '';
   try {
-    const res = await fetch(`${SERVER}/api/ping`, { signal: AbortSignal.timeout(2500) });
-    if (res.ok) {
-      setConnected(true);
-      loadConfig();
-      loadRubric();
-      tryLoadCompileResults();
-      tryLoadExecutionResults();
-      tryLoadRubricResults();
-      return;
+    if (window.location.protocol === 'http:' || window.location.protocol === 'https:') {
+      origin = window.location.origin.replace(/\/$/, '');
     }
   } catch (_) {}
+  const defaults = ['http://127.0.0.1:5001', 'http://localhost:5001'];
+  if (stored) {
+    return [...new Set([stored, origin, ...defaults].filter(Boolean))];
+  }
+  return [...new Set([origin, ...defaults].filter(Boolean))];
+}
+
+function pingSignal() {
+  try {
+    if (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) {
+      return AbortSignal.timeout(2500);
+    }
+  } catch (_) {}
+  return undefined;
+}
+
+async function checkServer() {
+  const candidates = serverCandidates();
+  for (const base of candidates) {
+    try {
+      const res = await fetch(`${base}/api/ping`, { signal: pingSignal() });
+      if (res.ok) {
+        SERVER = base;
+        localStorage.setItem(SERVER_KEY, base);
+        setConnected(true);
+        loadConfig();
+        loadRubric();
+        tryLoadCompileResults();
+        tryLoadExecutionResults();
+        tryLoadRubricResults();
+        return;
+      }
+    } catch (_) { /* try next */ }
+  }
+  SERVER = candidates[0] || 'http://localhost:5001';
   setConnected(false);
 }
 

@@ -21,7 +21,7 @@ import threading
 import time
 from pathlib import Path
 
-from flask import Flask, Response, jsonify, request, stream_with_context
+from flask import Flask, Response, jsonify, request, send_from_directory, stream_with_context
 from flask_cors import CORS
 
 # ── App setup ─────────────────────────────────────────────────────────────────
@@ -353,6 +353,46 @@ def status():
     })
 
 
+# ── Static UI (same origin as API — avoids mixed-content / wrong-host issues) ─
+
+def _safe_name(name: str) -> bool:
+    return bool(name) and ".." not in name and not name.startswith(("/", "\\"))
+
+
+@app.route("/")
+def serve_root():
+    return send_from_directory(BASE_DIR, "index.html", max_age=0)
+
+
+@app.route("/index.html")
+def serve_index():
+    return send_from_directory(BASE_DIR, "index.html", max_age=0)
+
+
+@app.route("/rubric.html")
+def serve_rubric():
+    return send_from_directory(BASE_DIR, "rubric.html", max_age=0)
+
+
+@app.route("/tests.html")
+def serve_tests():
+    return send_from_directory(BASE_DIR, "tests.html", max_age=0)
+
+
+@app.route("/css/<path:filename>")
+def serve_css(filename):
+    if not _safe_name(filename):
+        return ("Not found", 404)
+    return send_from_directory(BASE_DIR / "css", filename, max_age=0)
+
+
+@app.route("/js/<path:filename>")
+def serve_js(filename):
+    if not _safe_name(filename):
+        return ("Not found", 404)
+    return send_from_directory(BASE_DIR / "js", filename, max_age=0)
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
@@ -368,13 +408,14 @@ def main():
     print("  C-Lab Autograder — Companion Server")
     print("=" * 60)
     print(f"  Listening on:  http://{display_host}:{args.port}")
+    print(f"  Open Grader UI: http://{display_host}:{args.port}/  (same tab = same origin as API; avoids browser blocking Run execution)")
     print(f"  Config file:   {args.config}")
     print(f"  Submissions:   {BASE_DIR / 'submissions'}")
     if args.host == "0.0.0.0":
         print()
         print("  Remote access enabled.")
-        print(f"  Enter  http://<this-server-ip>:{args.port}  in the")
-        print("  'Server URL' field on the Grader page.")
+        print(f"  Open  http://<this-server-ip>:{args.port}/  in the browser, or set that base URL")
+        print("  under 'Server URL' if you use the GitHub-hosted UI instead.")
     print()
     print("  Keep this terminal open while using the web app.")
     print("  Press Ctrl+C to stop.")

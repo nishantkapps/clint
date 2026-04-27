@@ -3,10 +3,45 @@
  */
 
 const SERVER_KEY = 'clint_server_url';
-let SERVER = localStorage.getItem(SERVER_KEY) || 'http://localhost:5001';
+let SERVER = (localStorage.getItem(SERVER_KEY) || '').trim().replace(/\/$/, '') || 'http://localhost:5001';
 
 const banner = document.getElementById('tests-banner');
 const root = document.getElementById('suites-root');
+
+function serverCandidates() {
+  const stored = (localStorage.getItem(SERVER_KEY) || '').trim().replace(/\/$/, '');
+  let origin = '';
+  try {
+    if (window.location.protocol === 'http:' || window.location.protocol === 'https:') {
+      origin = window.location.origin.replace(/\/$/, '');
+    }
+  } catch (_) {}
+  const defaults = ['http://127.0.0.1:5001', 'http://localhost:5001'];
+  if (stored) return [...new Set([stored, origin, ...defaults].filter(Boolean))];
+  return [...new Set([origin, ...defaults].filter(Boolean))];
+}
+
+function pingSignal() {
+  try {
+    if (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) {
+      return AbortSignal.timeout(2500);
+    }
+  } catch (_) {}
+  return undefined;
+}
+
+async function resolveServer() {
+  for (const base of serverCandidates()) {
+    try {
+      const res = await fetch(`${base}/api/ping`, { signal: pingSignal() });
+      if (res.ok) {
+        localStorage.setItem(SERVER_KEY, base);
+        return base;
+      }
+    } catch (_) {}
+  }
+  return serverCandidates()[0] || 'http://localhost:5001';
+}
 
 function showBanner(text, cls = '') {
   banner.className = 'banner-tests ' + cls;
@@ -21,7 +56,7 @@ function esc(s) {
 
 async function ping() {
   try {
-    const res = await fetch(`${SERVER}/api/ping`, { signal: AbortSignal.timeout(2500) });
+    const res = await fetch(`${SERVER}/api/ping`, { signal: pingSignal() });
     return res.ok;
   } catch (_) {
     return false;
@@ -137,6 +172,7 @@ async function saveSuite(suiteName, section) {
 
 async function loadSuites() {
   root.innerHTML = '';
+  SERVER = await resolveServer();
   const ok = await ping();
   if (!ok) {
     showBanner(

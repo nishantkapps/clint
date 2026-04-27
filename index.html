@@ -235,7 +235,7 @@
   <div class="page-header">
     <h1>Grader</h1>
     <p>Compile all sources, run test cases in a second step, then score the rubric. Three result tables, three CSV exports.</p>
-    <p class="page-note">Grading runs only on the companion server you connect to below (<code>python3 server.py</code> on your machine or a lab host). The browser triggers jobs and shows results; it does not compile or execute C. Put submissions where that server’s <code>config.json</code> points (usually next to <code>server.py</code>).</p>
+    <p class="page-note">Grading runs only on the companion server you connect to below (<code>python3 server.py</code> on your machine or a lab host). The browser triggers jobs and shows results; it does not compile or execute C. Put submissions where that server’s <code>config.json</code> points (usually next to <code>server.py</code>). <strong>Recommended:</strong> after starting the server, open the Grader at <code>http://127.0.0.1:5001/</code> (same machine as the API — avoids blocked requests).</p>
   </div>
 
   <!-- Server status banner -->
@@ -472,6 +472,6 @@
 <!-- ── Toast ────────────────────────────────────────────── -->
 <div id="toast"></div>
 
-<script src="js/app.js?v=9"></script>
+<script src="js/app.js?v=10"></script>
 </body>
 </html>
