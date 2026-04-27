@@ -1,7 +1,12 @@
 {
   "submissions_dir": "./submissions",
   "rubric_file": "./rubric.json",
-  "output_csv": "./results.csv",
+  "output_compile_csv": "./results_compile.csv",
+  "output_rubric_csv": "./results_rubric.csv",
+  "tests_dir": "./test_cases",
+  "stdin_for_run": "",
+  "expected_output": "",
+  "execution_max_marks": 10,
   "id_extraction": {
     "strategy": "before_first_underscore",
     "regex": "^([^_]+)"

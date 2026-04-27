@@ -224,7 +224,7 @@
 <main class="page">
   <div class="page-header">
     <h1>Grader</h1>
-    <p>Run GCC against all student submissions and generate a results CSV.</p>
+    <p>Compile and run student code in one step; score the rubric in a separate step. Two result tables, two CSV exports.</p>
   </div>
 
   <!-- Server status banner -->
@@ -265,8 +265,12 @@
       <input id="cfg-rubric" type="text" placeholder="./rubric.json" />
     </div>
     <div class="form-group">
-      <label>Output CSV</label>
-      <input id="cfg-output" type="text" placeholder="./results.csv" />
+      <label>Compile report CSV</label>
+      <input id="cfg-output-compile" type="text" placeholder="./results_compile.csv" />
+    </div>
+    <div class="form-group">
+      <label>Rubric report CSV</label>
+      <input id="cfg-output-rubric" type="text" placeholder="./results_rubric.csv" />
     </div>
     <div class="form-group">
       <label>ID extraction</label>
@@ -295,20 +299,45 @@
       <input id="cfg-llm-model" type="text" placeholder="claude-3-haiku-20240307" />
     </div>
     <div class="form-group full-width" style="grid-column:1/-1">
-      <label>API Key <span style="font-weight:400;color:var(--text-muted)">(saved to config.json on your local machine only)</span></label>
+      <label>API Key <span style="font-weight:400;color:var(--text-muted)">(saved to config.json on the server only)</span></label>
       <input id="cfg-llm-key" type="password" placeholder="sk-ant-... or sk-..." autocomplete="off" />
     </div>
   </div>
 
+  <!-- Program execution (used by compile-run phase) -->
+  <div class="config-panel" id="execution-panel" style="grid-template-columns:1fr">
+    <h3>Program execution <span style="font-weight:400;color:var(--text-muted)">(after successful compile)</span></h3>
+    <div class="form-group full-width" style="grid-column:1/-1">
+      <label>Stdin (optional — fed to the program on each run)</label>
+      <textarea id="cfg-stdin" rows="2" placeholder="Leave empty for no stdin"></textarea>
+    </div>
+    <div class="form-group full-width" style="grid-column:1/-1">
+      <label>Expected stdout <span style="font-weight:400;color:var(--text-muted)">(exact match after normalization = full execution marks; close match = partial via similarity)</span></label>
+      <textarea id="cfg-expected" rows="5" placeholder="e.g. Hello from 0838H"></textarea>
+    </div>
+    <div class="form-group">
+      <label>Execution max marks</label>
+      <input id="cfg-exec-max" type="number" min="0" max="100" value="10" />
+    </div>
+  </div>
+
   <!-- Run controls -->
-  <div class="run-section">
-    <button class="btn btn-primary btn-run" id="btn-run" disabled>
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style="margin-right:4px">
-        <path d="M4 3l10 5-10 5V3z" fill="currentColor"/>
-      </svg>
-      Run Grader
-    </button>
-    <span class="run-meta" id="run-meta">Connect the local server to enable grading.</span>
+  <div class="run-section" style="flex-direction:column;align-items:flex-start;gap:12px">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-primary btn-run" id="btn-run-compile" disabled>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style="margin-right:4px">
+          <path d="M4 3l10 5-10 5V3z" fill="currentColor"/>
+        </svg>
+        Run compile &amp; execution
+      </button>
+      <button class="btn btn-ghost btn-run" id="btn-run-rubric" disabled style="border:1px solid var(--border)">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style="margin-right:4px">
+          <path d="M4 3l10 5-10 5V3z" fill="currentColor"/>
+        </svg>
+        Run rubric scoring
+      </button>
+    </div>
+    <span class="run-meta" id="run-meta">Connect the grader server to enable both phases.</span>
   </div>
 
   <!-- Progress bar -->
@@ -325,38 +354,50 @@
   <!-- Live log -->
   <div class="log-box" id="log-box"></div>
 
-  <!-- Results -->
-  <div id="results-section" style="display:none">
-
-    <!-- Rubric legend -->
-    <div id="rubric-legend" style="display:none;margin-bottom:20px">
-      <div style="font-size:.8rem;font-weight:600;letter-spacing:.3px;color:var(--text-muted);text-transform:uppercase;margin-bottom:10px">Rubric Key</div>
-      <div id="rubric-legend-items" style="display:flex;flex-wrap:wrap;gap:8px"></div>
-    </div>
-
+  <!-- Compile & execution report -->
+  <div id="compile-results-section" style="display:none;margin-top:8px">
     <div class="results-header">
-      <h2 id="results-title">Results</h2>
+      <h2 id="compile-results-title">Compile &amp; execution report</h2>
       <div style="display:flex;gap:10px">
-        <button class="btn btn-ghost btn-sm" id="btn-refresh-results">Refresh</button>
-        <button class="btn btn-primary btn-sm" id="btn-download-csv">
-          <svg width="13" height="13" viewBox="0 0 14 14" fill="none" style="margin-right:4px">
-            <path d="M2 10V12h10v-2M7 9V2M4 5l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          Download CSV
-        </button>
+        <button class="btn btn-ghost btn-sm" id="btn-refresh-compile">Refresh</button>
+        <button class="btn btn-primary btn-sm" id="btn-download-compile-csv">Download CSV</button>
       </div>
     </div>
     <div class="table-wrap">
-      <table id="results-table">
-        <thead id="results-thead"></thead>
-        <tbody id="results-tbody"></tbody>
+      <table id="compile-table">
+        <thead id="compile-thead"></thead>
+        <tbody id="compile-tbody"></tbody>
       </table>
     </div>
   </div>
+  <div class="empty-results" id="empty-compile" style="display:none;margin-bottom:28px">
+    <strong>No compile report yet</strong>
+    Click <em>Run compile &amp; execution</em> after setting expected output (optional — stdout is still captured).
+  </div>
 
-  <div class="empty-results" id="empty-results">
-    <strong>No results yet</strong>
-    Run the grader to see student results here.
+  <!-- Rubric report -->
+  <div id="rubric-results-section" style="display:none;margin-top:32px">
+    <div id="rubric-legend" style="display:none;margin-bottom:20px">
+      <div style="font-size:.8rem;font-weight:600;letter-spacing:.3px;color:var(--text-muted);text-transform:uppercase;margin-bottom:10px">Rubric key</div>
+      <div id="rubric-legend-items" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+    </div>
+    <div class="results-header">
+      <h2 id="rubric-results-title">Rubric report</h2>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-ghost btn-sm" id="btn-refresh-rubric">Refresh</button>
+        <button class="btn btn-primary btn-sm" id="btn-download-rubric-csv">Download CSV</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table id="rubric-table">
+        <thead id="rubric-thead"></thead>
+        <tbody id="rubric-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+  <div class="empty-results" id="empty-rubric" style="display:none;margin-bottom:80px">
+    <strong>No rubric report yet</strong>
+    Click <em>Run rubric scoring</em> (requires <code>rubric.json</code> on the server).
   </div>
 
 </main>
@@ -364,6 +405,6 @@
 <!-- ── Toast ────────────────────────────────────────────── -->
 <div id="toast"></div>
 
-<script src="js/app.js?v=2"></script>
+<script src="js/app.js?v=3"></script>
 </body>
 </html>

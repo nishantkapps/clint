@@ -1,4 +1,6 @@
 results.csv
+results_compile.csv
+results_rubric.csv
 submissions/
 __pycache__/
 *.pyc

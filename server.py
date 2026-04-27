@@ -40,6 +40,7 @@ _run_state = {
     "done":    False,
     "error":   None,
     "summary": {},
+    "run_mode": None,
 }
 
 
@@ -49,6 +50,7 @@ def _reset_state():
     _run_state["done"] = False
     _run_state["error"] = None
     _run_state["summary"] = {}
+    _run_state["run_mode"] = None
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -85,36 +87,32 @@ def save_config():
     return jsonify({"ok": True})
 
 
-@app.route("/api/run", methods=["POST"])
-def run_grader():
-    """
-    Trigger the grader in a background thread and stream live output
-    back to the browser using Server-Sent Events (SSE).
-
-    The browser connects with EventSource('/api/run') — each graded
-    file emits an event, and a final 'done' event closes the stream.
-    """
+def _start_grader_job(mode: str):
+    """mode is 'compile-run' or 'rubric'."""
     if _run_state["running"]:
         return jsonify({"error": "Grader is already running."}), 409
 
     with _run_lock:
         _reset_state()
         _run_state["running"] = True
+        _run_state["run_mode"] = mode
 
-    # Extract request data before entering the background thread
     req_cfg = request.get_json(force=True, silent=True) or {}
 
     def _run_in_background():
         try:
-            cmd = [sys.executable, str(BASE_DIR / "grader.py")]
+            cmd = [
+                sys.executable,
+                str(BASE_DIR / "grader.py"),
+                "--mode",
+                mode,
+            ]
             if req_cfg.get("config"):
                 cmd += ["--config", req_cfg["config"]]
             if req_cfg.get("submissions"):
                 cmd += ["--submissions", req_cfg["submissions"]]
             if req_cfg.get("rubric"):
                 cmd += ["--rubric", req_cfg["rubric"]]
-            if req_cfg.get("output"):
-                cmd += ["--output", req_cfg["output"]]
 
             proc = subprocess.Popen(
                 cmd,
@@ -130,21 +128,33 @@ def run_grader():
             _run_state["done"] = True
             _run_state["running"] = False
 
-            # Parse summary line
+            summary_lines = []
             for line in _run_state["log"]:
-                if line.startswith("Summary:"):
-                    _run_state["summary"]["text"] = line
-                if line.startswith("Results written to:"):
+                if line.startswith("Summary:") or line.startswith("Average"):
+                    summary_lines.append(line)
+                if "written to:" in line.lower():
                     _run_state["summary"]["output"] = line.split(":", 1)[1].strip()
+            _run_state["summary"]["text"] = "\n".join(summary_lines)
 
         except Exception as e:
             _run_state["error"] = str(e)
             _run_state["done"] = True
             _run_state["running"] = False
 
-    thread = threading.Thread(target=_run_in_background, daemon=True)
-    thread.start()
-    return jsonify({"ok": True, "message": "Grader started."})
+    threading.Thread(target=_run_in_background, daemon=True).start()
+    return jsonify({"ok": True, "message": f"Grader started ({mode})."})
+
+
+@app.route("/api/run-compile", methods=["POST"])
+def run_compile():
+    """Compile all submissions, run binaries, score vs expected output."""
+    return _start_grader_job("compile-run")
+
+
+@app.route("/api/run-rubric", methods=["POST"])
+def run_rubric():
+    """Score rubric items only (separate from compile-run)."""
+    return _start_grader_job("rubric")
 
 
 @app.route("/api/stream")
@@ -164,7 +174,7 @@ def stream_log():
 
             if _run_state["done"]:
                 summary = _run_state.get("summary", {})
-                yield f"data: {json.dumps({'done': True, 'summary': summary, 'error': _run_state.get('error')})}\n\n"
+                yield f"data: {json.dumps({'done': True, 'mode': _run_state.get('run_mode'), 'summary': summary, 'error': _run_state.get('error')})}\n\n"
                 break
 
             time.sleep(0.15)
@@ -195,29 +205,45 @@ def get_rubric():
     return jsonify({"lab": data.get("lab", ""), "items": data.get("items", [])})
 
 
-@app.route("/api/results")
-def get_results():
-    """Return the results CSV as JSON rows."""
-    cfg_path = BASE_DIR / DEFAULT_CONFIG
-    output_csv = "./results.csv"
-
-    if cfg_path.exists():
-        with open(cfg_path) as f:
-            cfg = json.load(f)
-            output_csv = cfg.get("output_csv", output_csv)
-
-    csv_path = BASE_DIR / output_csv
+def _csv_to_json(csv_rel: str):
+    csv_path = BASE_DIR / csv_rel
     if not csv_path.exists():
-        return jsonify({"error": "results.csv not found — run the grader first."}), 404
-
+        return None
     rows = []
     with open(csv_path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         headers = reader.fieldnames or []
         for row in reader:
             rows.append(dict(row))
+    return {"headers": headers, "rows": rows}
 
-    return jsonify({"headers": headers, "rows": rows})
+
+@app.route("/api/results-compile")
+def get_results_compile():
+    """Compile & execution report CSV."""
+    cfg_path = BASE_DIR / DEFAULT_CONFIG
+    rel = "./results_compile.csv"
+    if cfg_path.exists():
+        with open(cfg_path) as f:
+            rel = json.load(f).get("output_compile_csv", rel)
+    data = _csv_to_json(rel)
+    if not data:
+        return jsonify({"error": "No compile report yet — run 'Compile & execution' first."}), 404
+    return jsonify(data)
+
+
+@app.route("/api/results-rubric")
+def get_results_rubric():
+    """Rubric-only report CSV."""
+    cfg_path = BASE_DIR / DEFAULT_CONFIG
+    rel = "./results_rubric.csv"
+    if cfg_path.exists():
+        with open(cfg_path) as f:
+            rel = json.load(f).get("output_rubric_csv", rel)
+    data = _csv_to_json(rel)
+    if not data:
+        return jsonify({"error": "No rubric report yet — run 'Rubric scoring' first."}), 404
+    return jsonify(data)
 
 
 @app.route("/api/status")

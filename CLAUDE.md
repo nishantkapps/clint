@@ -2,24 +2,31 @@
 
 ## What This Is
 
-A client-side web app hosted on GitHub Pages at `nishantkapps.github.io/clint` that lets instructors define a marking rubric for C programming labs and (eventually) grade student submissions — all without a server.
+A client-side web app hosted on GitHub Pages at `nishantkapps.github.io/clint` plus a **Python companion server** (`server.py`) that runs on the instructor’s machine (or SSH server). The browser UI triggers `grader.py`, which uses **gcc** to compile, runs binaries, compares stdout to expected output, and scores rubric items (static regex / LLM / file-based tests).
 
 ## Architecture
 
-- **Pure client-side**: HTML + CSS + vanilla JS, no build step
-- **rubric.html**: Rubric editor — add/edit/delete/reorder grading criteria, save/load as JSON
-- **index.html**: Grader — (in progress) upload submissions, run grading, download results CSV
-- **localStorage**: Rubric state persisted in the browser between sessions
-- **JSON**: Rubric exported/imported as `<lab>_rubric.json`
+- **GitHub Pages**: `index.html` (grader), `rubric.html` (rubric editor) — vanilla JS, no build step
+- **Companion server** (`server.py`): Flask + CORS; exposes `/api/run-compile`, `/api/run-rubric`, `/api/stream`, `/api/results-compile`, `/api/results-rubric`, `/api/config`, `/api/rubric`
+- **Grader** (`grader.py`): Two modes — `--mode compile-run` (compile + run + execution marks vs `expected_output` in config) and `--mode rubric` (rubric columns only → `results_rubric.csv`)
+- **localStorage**: Rubric editor state + default seed; Grader page stores **Server URL** (`clint_server_url`)
+- **config.json** (on server): paths, `stdin_for_run`, `expected_output`, `execution_max_marks`, LLM keys, CSV output paths
 
 ## Key Commands
 
 ```bash
-# Local dev server
+# Static site local preview
 python3 -m http.server 8787
-# then open http://localhost:8787/rubric.html
+# http://localhost:8787/rubric.html
 
-# Deploy: just push to main — GitHub Actions handles the rest
+# Companion + grading (on machine with gcc + submissions)
+python3 server.py                    # localhost:5001
+python3 server.py --host 0.0.0.0 --port 5001   # remote browser access
+
+python3 grader.py --mode compile-run
+python3 grader.py --mode rubric
+
+# Deploy UI: push to main — GitHub Actions → Pages
 git add . && git commit -m "message" && git push
 ```
 
@@ -27,45 +34,24 @@ git add . && git commit -m "message" && git push
 
 ```
 clint/
-├── index.html              # Grader page (in progress)
-├── rubric.html             # Rubric editor
-├── css/
-│   └── style.css           # Shared styles (dark theme)
-├── js/
-│   └── rubric.js           # Rubric CRUD, localStorage, JSON save/load
-└── .github/workflows/
-    └── pages.yml           # Deploy to GitHub Pages on push to main
+├── index.html
+├── rubric.html
+├── css/style.css
+├── js/app.js               # Grader UI (two phases, two tables)
+├── js/rubric.js            # Rubric CRUD + default seed
+├── grader.py
+├── server.py
+├── config.json
+├── rubric.json             # optional sample / server copy
+├── submissions/            # gitignored
+├── results_compile.csv     # gitignored
+├── results_rubric.csv      # gitignored
+├── README.md
+└── .github/workflows/pages.yml
 ```
-
-## Rubric JSON Format
-
-```json
-{
-  "lab": "Lab 3 — Linked Lists",
-  "created": "2026-04-17",
-  "items": [
-    {
-      "id": "header_files_1234567890",
-      "name": "Header Files",
-      "condition": "Must include stdio.h and stdlib.h",
-      "type": "static",
-      "max_marks": 2
-    }
-  ]
-}
-```
-
-## Grading Types (planned)
-
-| Type     | How it works                                      |
-|----------|---------------------------------------------------|
-| `static` | Regex pattern match against the student's .c file |
-| `llm`    | AI model evaluates the code against the criterion |
-| `test`   | Compile + run against test cases, check output    |
 
 ## Conventions
 
-- No build step — vanilla JS only
-- After changing `css/style.css` or any JS file, bump the `?v=` query string on the `<link>`/`<script>` tags in HTML so GitHub Pages visitors get fresh assets
-- Rubric JSON files are **not** committed — they live on the instructor's machine
-- GitHub Pages source must be set to **GitHub Actions** in repo Settings → Pages
+- Bump `?v=` on `<script>` / `<link>` in HTML after JS/CSS changes (cache bust on Pages)
+- Rubric JSON from the editor: same shape as `rubric.json` on the server (`items` array)
+- GitHub Pages source: **GitHub Actions** (repo Settings → Pages)

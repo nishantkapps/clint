@@ -2,19 +2,21 @@
 """
 grader.py — C-Lab Autograder (local runner)
 
-Scoring tiers:
-  static  → regex pattern matching (fast, free, deterministic)
-  llm     → LLM API evaluation     (nuanced, requires API key)
-  test    → compile + run vs. expected output
+Two modes (run separately):
+  compile-run  Compile each .c, run binary, compare stdout to expected output
+  rubric       Score rubric items (static / llm / test) per submission
 
 Usage:
-    python3 grader.py
-    python3 grader.py --config config.json
-    python3 grader.py --submissions ./submissions --rubric rubric.json --output results.csv
+    python3 grader.py --mode compile-run
+    python3 grader.py --mode rubric
+    python3 grader.py --config config.json --mode compile-run
 """
+
+from __future__ import annotations
 
 import argparse
 import csv
+import difflib
 import json
 import os
 import re
@@ -53,7 +55,7 @@ def extract_student_id(filename: str, strategy: str, regex_pattern: str = None) 
     return stem
 
 
-# ── Compile ───────────────────────────────────────────────────────────────────
+# ── Compile & run ─────────────────────────────────────────────────────────────
 
 def compile_c_file(c_file: Path, compile_timeout: int) -> tuple[bool, str, Path | None]:
     tmp_dir = tempfile.mkdtemp(prefix="clint_")
@@ -73,20 +75,63 @@ def compile_c_file(c_file: Path, compile_timeout: int) -> tuple[bool, str, Path 
         sys.exit(1)
 
 
-# ── Static scorer (regex patterns) ───────────────────────────────────────────
+def run_binary(binary: Path, stdin_text: str, run_timeout: int) -> tuple[str, str, str | None]:
+    """Returns (stdout, stderr, error_message_or_None)."""
+    try:
+        result = subprocess.run(
+            [str(binary)],
+            input=stdin_text or "",
+            capture_output=True, text=True, timeout=run_timeout,
+        )
+        return result.stdout or "", result.stderr or "", None
+    except subprocess.TimeoutExpired:
+        return "", "", "Run timed out."
+    except Exception as e:
+        return "", "", str(e)
+
+
+def normalize_output(s: str) -> str:
+    """Normalize for comparison: CRLF → LF, strip trailing blank lines, rstrip each line."""
+    if s is None:
+        return ""
+    s = s.replace("\r\n", "\n").replace("\r", "\n")
+    lines = [line.rstrip() for line in s.split("\n")]
+    while lines and lines[-1] == "":
+        lines.pop()
+    return "\n".join(lines)
+
+
+def score_execution_match(actual: str, expected: str, max_marks: int) -> tuple[int, float, str]:
+    """
+    Full marks if normalized strings match exactly.
+    Otherwise partial marks proportional to SequenceMatcher ratio (0–1).
+    """
+    if max_marks <= 0:
+        return 0, 0.0, "Execution marks set to 0."
+
+    na = normalize_output(actual)
+    ne = normalize_output(expected)
+
+    if not ne.strip():
+        return 0, 0.0, "No expected output configured — execution not scored."
+
+    if na == ne:
+        return max_marks, 100.0, "Exact match (after normalization)."
+
+    ratio = difflib.SequenceMatcher(None, na, ne).ratio()
+    marks = max(0, min(max_marks, round(max_marks * ratio)))
+    pct = round(ratio * 100, 1)
+    return marks, pct, f"Similarity {pct}% vs expected (partial credit)."
+
+
+# ── Static / LLM / test scorers (unchanged logic) ─────────────────────────────
 
 def score_static(item: dict, code: str) -> tuple[int, str]:
-    """
-    Award marks proportionally: each pattern that matches = (max_marks / total_patterns).
-    If no patterns are defined, fall back to keyword scan from the condition text.
-    Full marks only if ALL patterns match.
-    """
     max_marks = item.get("max_marks", 0)
-    patterns  = item.get("patterns", [])
+    patterns = item.get("patterns", [])
 
     if not patterns:
-        # Fallback: extract C identifiers / filenames from condition and check presence
-        words = re.findall(r'[\w\.]+', item.get("condition", ""))
+        words = re.findall(r"[\w\.]+", item.get("condition", ""))
         c_keywords = {"include", "int", "char", "float", "double", "void",
                       "return", "if", "else", "for", "while", "struct", "pointer"}
         candidates = [w for w in words if w not in c_keywords and len(w) > 2]
@@ -98,8 +143,7 @@ def score_static(item: dict, code: str) -> tuple[int, str]:
         reason = f"Keyword scan: {len(matched)}/{len(candidates)} terms found ({', '.join(matched[:4])})."
         return marks, reason
 
-    matched = []
-    missed  = []
+    matched, missed = [], []
     for pat in patterns:
         try:
             if re.search(pat, code, re.IGNORECASE | re.MULTILINE):
@@ -107,42 +151,32 @@ def score_static(item: dict, code: str) -> tuple[int, str]:
             else:
                 missed.append(pat)
         except re.error:
-            # Treat invalid regex as a plain-text search
             if pat.lower() in code.lower():
                 matched.append(pat)
             else:
                 missed.append(pat)
 
     if len(matched) == len(patterns):
-        marks  = max_marks
-        reason = f"All {len(patterns)} pattern(s) matched."
-    elif matched:
-        marks  = round(max_marks * len(matched) / len(patterns))
-        reason = f"{len(matched)}/{len(patterns)} patterns matched. Missing: {', '.join(missed[:3])}."
-    else:
-        marks  = 0
-        reason = f"No patterns matched. Expected: {', '.join(patterns[:3])}."
+        return max_marks, f"All {len(patterns)} pattern(s) matched."
+    if matched:
+        marks = round(max_marks * len(matched) / len(patterns))
+        return marks, f"{len(matched)}/{len(patterns)} patterns matched. Missing: {', '.join(missed[:3])}."
+    return 0, f"No patterns matched. Expected: {', '.join(patterns[:3])}."
 
-    return marks, reason
-
-
-# ── LLM scorer ───────────────────────────────────────────────────────────────
 
 def score_llm(item: dict, code: str, llm_config: dict) -> tuple[int, str]:
-    """Call an LLM to score this rubric item. Returns (marks, reason)."""
     try:
         import litellm
     except ImportError:
         return 0, "litellm not installed — run: pip install litellm"
 
-    model   = llm_config.get("llm_model", "claude-3-haiku-20240307")
+    model = llm_config.get("llm_model", "claude-3-haiku-20240307")
     api_key = llm_config.get("llm_api_key", "")
     max_marks = item.get("max_marks", 0)
 
     if not api_key:
         return 0, "No LLM API key configured — set llm_api_key in config.json."
 
-    # Set key for litellm
     provider = llm_config.get("llm_provider", "anthropic")
     if provider == "anthropic":
         os.environ["ANTHROPIC_API_KEY"] = api_key
@@ -172,7 +206,6 @@ Reply with ONLY valid JSON — no extra text:
             temperature=0,
         )
         raw = response.choices[0].message.content.strip()
-        # Strip markdown fences if present
         raw = re.sub(r"^```[a-z]*\n?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
         result = json.loads(raw)
         marks = max(0, min(int(result.get("marks", 0)), max_marks))
@@ -183,26 +216,19 @@ Reply with ONLY valid JSON — no extra text:
         return 0, f"LLM error: {e}"
 
 
-# ── Test scorer (run binary vs expected output) ───────────────────────────────
-
 def score_test(item: dict, binary: Path, tests_dir: Path, run_timeout: int) -> tuple[int, str]:
-    """
-    Looks for test_cases/<test_case_key>/input_*.txt + expected_*.txt pairs.
-    Awards marks proportionally based on how many test cases pass.
-    """
-    max_marks  = item.get("max_marks", 0)
-    test_key   = item.get("test_case", "test_1")
-    test_path  = tests_dir / test_key
+    max_marks = item.get("max_marks", 0)
+    test_key = item.get("test_case", "test_1")
+    test_path = tests_dir / test_key
 
     if not test_path.exists():
         return 0, f"Test folder not found: {test_path}"
 
-    inputs   = sorted(test_path.glob("input_*.txt"))
+    inputs = sorted(test_path.glob("input_*.txt"))
     if not inputs:
         return 0, f"No input_*.txt files in {test_path}"
 
-    passed = 0
-    details = []
+    passed, details = 0, []
     for inp in inputs:
         idx = inp.stem.replace("input_", "")
         exp_file = test_path / f"expected_{idx}.txt"
@@ -230,58 +256,32 @@ def score_test(item: dict, binary: Path, tests_dir: Path, run_timeout: int) -> t
     if total == 0:
         return 0, "No valid test pairs found."
 
-    marks  = round(max_marks * passed / total)
-    reason = f"{passed}/{total} tests passed. {' '.join(details)}."
-    return marks, reason
+    marks = round(max_marks * passed / total)
+    return marks, f"{passed}/{total} tests passed. {' '.join(details)}."
 
 
-# ── Per-file grader ───────────────────────────────────────────────────────────
+# ── Phase: compile + run + execution score ────────────────────────────────────
 
-def grade_file(
-    c_file: Path,
-    rubric_items: list[dict],
-    config: dict,
-) -> dict:
+def compile_run_file(c_file: Path, config: dict) -> dict:
     compile_timeout = config.get("compile_timeout_seconds", 10)
-    run_timeout     = config.get("run_timeout_seconds", 2)
-    tests_dir       = Path(config.get("tests_dir", "./test_cases"))
-    llm_config      = config  # pass full config so llm scorer can read keys
+    run_timeout = config.get("run_timeout_seconds", 2)
+    stdin_text = config.get("stdin_for_run", "") or ""
+    expected = config.get("expected_output", "") or ""
+    exec_max = int(config.get("execution_max_marks", 10) or 10)
 
-    # ── Compile ──
     compiles, compile_error, binary = compile_c_file(c_file, compile_timeout)
-    code = c_file.read_text(errors="replace")
 
-    scores   = {}
-    reasons  = {}
-    feedback = []
+    stdout, stderr, run_err = "", "", None
+    exec_marks, match_pct, exec_note = 0, 0.0, ""
 
-    for n, item in enumerate(rubric_items, 1):
-        col_key   = f"Rubric_{n}"           # generic column name in CSV
-        item_type = item.get("type", "static")
-        max_marks = item.get("max_marks", 0)
-
-        if item_type == "static":
-            marks, reason = score_static(item, code)
-
-        elif item_type == "llm":
-            marks, reason = score_llm(item, code, llm_config)
-
-        elif item_type == "test":
-            if compiles and binary:
-                marks, reason = score_test(item, binary, tests_dir, run_timeout)
-            else:
-                marks, reason = 0, "Did not compile — test not run."
-
+    if compiles and binary:
+        stdout, stderr, run_err = run_binary(binary, stdin_text, run_timeout)
+        if run_err:
+            exec_note = run_err
+            exec_marks, match_pct = 0, 0.0
         else:
-            marks, reason = 0, f"Unknown type: {item_type}"
+            exec_marks, match_pct, exec_note = score_execution_match(stdout, expected, exec_max)
 
-        scores[col_key]  = marks
-        reasons[col_key] = reason
-        feedback.append(f"Rubric {n} — {item['name']} ({marks}/{max_marks}): {reason}")
-
-    total = sum(scores.values())
-
-    # cleanup binary
     if binary and binary.exists():
         binary.unlink()
         try:
@@ -290,22 +290,134 @@ def grade_file(
             pass
 
     return {
-        "compiles":      compiles,
+        "compiles": compiles,
         "compile_error": compile_error,
-        "scores":        scores,
-        "reasons":       reasons,
-        "total":         total,
-        "feedback":      "\n".join(feedback),
+        "stdout": stdout,
+        "stderr": stderr,
+        "run_error": run_err or "",
+        "execution_marks": exec_marks,
+        "execution_max": exec_max,
+        "match_pct": match_pct,
+        "execution_note": exec_note,
     }
 
 
-# ── Batch processor ───────────────────────────────────────────────────────────
-
-def grade_all(config: dict, rubric_items: list[dict]) -> list[dict]:
+def compile_run_all(config: dict) -> list[dict]:
     submissions_dir = Path(config["submissions_dir"])
-    id_cfg   = config.get("id_extraction", {})
+    id_cfg = config.get("id_extraction", {})
     strategy = id_cfg.get("strategy", "before_first_underscore")
-    regex_pat= id_cfg.get("regex")
+    regex_pat = id_cfg.get("regex")
+
+    c_files = sorted(submissions_dir.glob("**/*.c"))
+    if not c_files:
+        print(f"[WARN] No .c files found in '{submissions_dir}'")
+        return []
+
+    exec_max = int(config.get("execution_max_marks", 10) or 10)
+    print(f"Found {len(c_files)} submission(s) in '{submissions_dir}'")
+    print(f"Compile & run phase — execution max marks: {exec_max}")
+    print()
+
+    rows = []
+    for idx, c_file in enumerate(c_files, 1):
+        sid = extract_student_id(c_file.name, strategy, regex_pat)
+        print(f"[{idx:>3}/{len(c_files)}] {sid:<25} ", end="", flush=True)
+
+        r = compile_run_file(c_file, config)
+        flag = "✓ Compiles" if r["compiles"] else "✗ No compile"
+        if r["compiles"] and r["run_error"]:
+            flag = "✓ Compiles  ✗ Run error"
+        elif r["compiles"]:
+            flag += f"  exec {r['execution_marks']}/{exec_max} ({r['match_pct']}% match)"
+        print(flag, flush=True)
+
+        rows.append({
+            "Student_ID": sid,
+            "File": c_file.name,
+            "Compiles": "Y" if r["compiles"] else "N",
+            "Compile_Error": "" if r["compiles"] else r["compile_error"],
+            "Stdout": r["stdout"],
+            "Stderr": r["stderr"],
+            "Run_Error": r["run_error"] or "",
+            "Execution_Marks": r["execution_marks"] if r["compiles"] and not r["run_error"] else "",
+            "Execution_Max": exec_max,
+            "Match_Pct": f"{r['match_pct']}%" if r["compiles"] and not r["run_error"] else "",
+            "Execution_Note": r["execution_note"],
+        })
+    return rows
+
+
+def export_compile_csv(results: list[dict], output_path: str):
+    if not results:
+        print("[WARN] No compile-run results to write.")
+        return
+    fieldnames = [
+        "Student_ID", "File", "Compiles", "Compile_Error",
+        "Stdout", "Stderr", "Run_Error",
+        "Execution_Marks", "Execution_Max", "Match_Pct", "Execution_Note",
+    ]
+    with open(output_path, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        w.writeheader()
+        w.writerows(results)
+    print(f"\nCompile & execution report written to: {output_path}")
+
+
+# ── Phase: rubric only ────────────────────────────────────────────────────────
+
+def grade_rubric_file(c_file: Path, rubric_items: list[dict], config: dict) -> dict:
+    compile_timeout = config.get("compile_timeout_seconds", 10)
+    run_timeout = config.get("run_timeout_seconds", 2)
+    tests_dir = Path(config.get("tests_dir", "./test_cases"))
+    llm_config = config
+
+    compiles, compile_error, binary = compile_c_file(c_file, compile_timeout)
+    code = c_file.read_text(errors="replace")
+
+    scores, feedback = {}, []
+    for n, item in enumerate(rubric_items, 1):
+        col_key = f"Rubric_{n}"
+        item_type = item.get("type", "static")
+        max_marks = item.get("max_marks", 0)
+
+        if item_type == "static":
+            marks, reason = score_static(item, code)
+        elif item_type == "llm":
+            marks, reason = score_llm(item, code, llm_config)
+        elif item_type == "test":
+            if compiles and binary:
+                marks, reason = score_test(item, binary, tests_dir, run_timeout)
+            else:
+                marks, reason = 0, "Did not compile — test not run."
+        else:
+            marks, reason = 0, f"Unknown type: {item_type}"
+
+        scores[col_key] = marks
+        feedback.append(f"Rubric {n} — {item['name']} ({marks}/{max_marks}): {reason}")
+
+    total = sum(scores.values())
+
+    if binary and binary.exists():
+        binary.unlink()
+        try:
+            binary.parent.rmdir()
+        except OSError:
+            pass
+
+    return {
+        "compiles": compiles,
+        "compile_error": compile_error,
+        "scores": scores,
+        "total": total,
+        "feedback": "\n".join(feedback),
+    }
+
+
+def grade_rubric_all(config: dict, rubric_items: list[dict]) -> list[dict]:
+    submissions_dir = Path(config["submissions_dir"])
+    id_cfg = config.get("id_extraction", {})
+    strategy = id_cfg.get("strategy", "before_first_underscore")
+    regex_pat = id_cfg.get("regex")
 
     c_files = sorted(submissions_dir.glob("**/*.c"))
     if not c_files:
@@ -313,116 +425,103 @@ def grade_all(config: dict, rubric_items: list[dict]) -> list[dict]:
         return []
 
     print(f"Found {len(c_files)} submission(s) in '{submissions_dir}'")
-    if rubric_items:
-        print(f"Rubric: {len(rubric_items)} item(s) — "
-              f"{sum(1 for i in rubric_items if i.get('type')=='static')} static, "
-              f"{sum(1 for i in rubric_items if i.get('type')=='llm')} LLM, "
-              f"{sum(1 for i in rubric_items if i.get('type')=='test')} test")
+    print(f"Rubric phase — {len(rubric_items)} item(s)")
     print()
 
-    results = []
-
+    rows = []
+    max_total = sum(i.get("max_marks", 0) for i in rubric_items)
     for idx, c_file in enumerate(c_files, 1):
-        student_id = extract_student_id(c_file.name, strategy, regex_pat)
-        print(f"[{idx:>3}/{len(c_files)}] {student_id:<25} ", end="", flush=True)
+        sid = extract_student_id(c_file.name, strategy, regex_pat)
+        print(f"[{idx:>3}/{len(c_files)}] {sid:<25} ", end="", flush=True)
 
-        result = grade_file(c_file, rubric_items, config)
-
-        compile_flag = "✓ Compiles" if result["compiles"] else "✗ No compile"
-        score_str    = f"  Score: {result['total']}" if rubric_items else ""
-        print(f"{compile_flag}{score_str}", flush=True)
+        r = grade_rubric_file(c_file, rubric_items, config)
+        flag = "✓ Compiles" if r["compiles"] else "✗ No compile"
+        print(f"{flag}  rubric {r['total']}/{max_total}", flush=True)
 
         row = {
-            "Student_ID":    student_id,
-            "File":          c_file.name,
-            "Compiles":      "Y" if result["compiles"] else "N",
-            "Compile_Error": "" if result["compiles"] else result["compile_error"],
+            "Student_ID": sid,
+            "File": c_file.name,
+            "Compiles": "Y" if r["compiles"] else "N",
+            "Compile_Error": "" if r["compiles"] else r["compile_error"],
         }
-        row.update(result["scores"])
-
+        row.update(r["scores"])
         if rubric_items:
-            row["Total_Score"] = result["total"]
-            row["Max_Score"]   = sum(i.get("max_marks", 0) for i in rubric_items)
-        row["Feedback"] = result["feedback"]
-
-        results.append(row)
-
-    return results
+            row["Total_Score"] = r["total"]
+            row["Max_Score"] = max_total
+        row["Feedback"] = r["feedback"]
+        rows.append(row)
+    return rows
 
 
-# ── CSV export ────────────────────────────────────────────────────────────────
-
-def export_csv(results: list[dict], output_path: str, rubric_items: list[dict]):
+def export_rubric_csv(results: list[dict], output_path: str, rubric_items: list[dict]):
     if not results:
-        print("[WARN] No results to write.")
+        print("[WARN] No rubric results to write.")
         return
-
-    fixed   = ["Student_ID", "File", "Compiles", "Compile_Error"]
-    rubric  = [f"Rubric_{n}" for n in range(1, len(rubric_items) + 1)]
-    trailing= (["Total_Score", "Max_Score", "Feedback"] if rubric_items
-                else ["Feedback"])
-    fieldnames = fixed + rubric + trailing
-
+    fixed = ["Student_ID", "File", "Compiles", "Compile_Error"]
+    rubric_cols = [f"Rubric_{n}" for n in range(1, len(rubric_items) + 1)]
+    trailing = (["Total_Score", "Max_Score", "Feedback"] if rubric_items else ["Feedback"])
+    fieldnames = fixed + rubric_cols + trailing
     with open(output_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
-        writer.writeheader()
-        writer.writerows(results)
-
-    print(f"\nResults written to: {output_path}")
+        w = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        w.writeheader()
+        w.writerows(results)
+    print(f"\nRubric report written to: {output_path}")
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description="C-Lab Autograder — local GCC grader")
-    parser.add_argument("--config",      default="config.json")
+    parser = argparse.ArgumentParser(description="C-Lab Autograder")
+    parser.add_argument("--config", default="config.json")
     parser.add_argument("--submissions", help="Override submissions directory")
-    parser.add_argument("--rubric",      help="Override rubric JSON file")
-    parser.add_argument("--output",      help="Override output CSV path")
+    parser.add_argument("--rubric", help="Override rubric JSON file")
+    parser.add_argument(
+        "--mode",
+        choices=("compile-run", "rubric"),
+        required=True,
+        help="compile-run: compile + execute + output match. rubric: rubric items only.",
+    )
     args = parser.parse_args()
 
     config_path = Path(args.config)
     if not config_path.exists():
-        print(f"[WARN] Config '{args.config}' not found — using defaults.")
-        config = {
-            "submissions_dir": "./submissions",
-            "rubric_file": "./rubric.json",
-            "output_csv": "./results.csv",
-            "tests_dir": "./test_cases",
-            "id_extraction": {"strategy": "before_first_underscore"},
-            "compile_timeout_seconds": 10,
-            "run_timeout_seconds": 2,
-        }
-    else:
-        config = load_config(str(config_path))
+        print(f"[ERROR] Config not found: {args.config}")
+        sys.exit(1)
 
-    if args.submissions: config["submissions_dir"] = args.submissions
-    if args.rubric:      config["rubric_file"]     = args.rubric
-    if args.output:      config["output_csv"]      = args.output
+    config = load_config(str(config_path))
+    if args.submissions:
+        config["submissions_dir"] = args.submissions
+    if args.rubric:
+        config["rubric_file"] = args.rubric
 
     submissions_dir = Path(config["submissions_dir"])
     if not submissions_dir.exists():
         print(f"[ERROR] Submissions directory not found: '{submissions_dir}'")
         sys.exit(1)
 
-    rubric_items = []
-    rubric_path  = Path(config.get("rubric_file", "./rubric.json"))
-    if rubric_path.exists():
+    out_compile = config.get("output_compile_csv", "./results_compile.csv")
+    out_rubric = config.get("output_rubric_csv", "./results_rubric.csv")
+
+    if args.mode == "compile-run":
+        results = compile_run_all(config)
+        if results:
+            ok = sum(1 for r in results if r["Compiles"] == "Y")
+            print(f"Summary: {ok}/{len(results)} compiled successfully.")
+        export_compile_csv(results, out_compile)
+
+    else:  # rubric
+        rubric_path = Path(config.get("rubric_file", "./rubric.json"))
+        if not rubric_path.exists():
+            print(f"[ERROR] Rubric file not found: {rubric_path}")
+            sys.exit(1)
         rubric_items = load_rubric(str(rubric_path))
         print(f"Rubric loaded: '{rubric_path}'")
-    else:
-        print(f"[INFO] No rubric file at '{rubric_path}' — only compile flag recorded.")
-
-    results = grade_all(config, rubric_items)
-
-    if results:
-        compiles = sum(1 for r in results if r["Compiles"] == "Y")
-        print(f"Summary: {compiles}/{len(results)} files compiled successfully.")
-        if rubric_items:
+        results = grade_rubric_all(config, rubric_items)
+        if results and rubric_items:
             avg = sum(r.get("Total_Score", 0) for r in results) / len(results)
-            print(f"Average score: {avg:.1f} / {sum(i.get('max_marks',0) for i in rubric_items)}")
-
-    export_csv(results, config["output_csv"], rubric_items)
+            mx = sum(i.get("max_marks", 0) for i in rubric_items)
+            print(f"Average rubric score: {avg:.1f} / {mx}")
+        export_rubric_csv(results, out_rubric, rubric_items)
 
 
 if __name__ == "__main__":
