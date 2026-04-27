@@ -89,7 +89,7 @@ def save_config():
 
 
 def _start_grader_job(mode: str):
-    """mode is 'compile-run' or 'rubric'."""
+    """mode is 'compile', 'execution', or 'rubric'."""
     if _run_state["running"]:
         return jsonify({"error": "Grader is already running."}), 409
 
@@ -148,13 +148,19 @@ def _start_grader_job(mode: str):
 
 @app.route("/api/run-compile", methods=["POST"])
 def run_compile():
-    """Compile all submissions, run binaries, score vs expected output."""
-    return _start_grader_job("compile-run")
+    """Compile all submissions to build_output_dir (no execution)."""
+    return _start_grader_job("compile")
+
+
+@app.route("/api/run-execution", methods=["POST"])
+def run_execution():
+    """Run compiled binaries against test cases (suites or stdin/expected)."""
+    return _start_grader_job("execution")
 
 
 @app.route("/api/run-rubric", methods=["POST"])
 def run_rubric():
-    """Score rubric items only (separate from compile-run)."""
+    """Score rubric items only."""
     return _start_grader_job("rubric")
 
 
@@ -221,7 +227,7 @@ def _csv_to_json(csv_rel: str):
 
 @app.route("/api/results-compile")
 def get_results_compile():
-    """Compile & execution report CSV."""
+    """Compile-only report CSV."""
     cfg_path = BASE_DIR / DEFAULT_CONFIG
     rel = "./results_compile.csv"
     if cfg_path.exists():
@@ -229,7 +235,21 @@ def get_results_compile():
             rel = json.load(f).get("output_compile_csv", rel)
     data = _csv_to_json(rel)
     if not data:
-        return jsonify({"error": "No compile report yet — run 'Compile & execution' first."}), 404
+        return jsonify({"error": "No compile report yet — run 'Compile' first."}), 404
+    return jsonify(data)
+
+
+@app.route("/api/results-execution")
+def get_results_execution():
+    """Execution / test-case report CSV."""
+    cfg_path = BASE_DIR / DEFAULT_CONFIG
+    rel = "./results_execution.csv"
+    if cfg_path.exists():
+        with open(cfg_path) as f:
+            rel = json.load(f).get("output_execution_csv", rel)
+    data = _csv_to_json(rel)
+    if not data:
+        return jsonify({"error": "No execution report yet — run 'Run execution' first."}), 404
     return jsonify(data)
 
 

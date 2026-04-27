@@ -2,15 +2,15 @@
 
 ## What This Is
 
-A client-side web app hosted on GitHub Pages at `nishantkapps.github.io/clint` plus a **Python companion server** (`server.py`) that runs on the instructor’s machine (or SSH server). The browser UI triggers `grader.py`, which uses **gcc** to compile, runs binaries, compares stdout to expected output, and scores rubric items (static regex / LLM / file-based tests).
+A client-side web app hosted on GitHub Pages at `nishantkapps.github.io/clint` plus a **Python companion server** (`server.py`) that runs on the instructor’s machine (or SSH server). The browser UI triggers `grader.py`, which uses **gcc** to compile, runs binaries in a separate execution phase against test cases, and scores rubric items (static regex / LLM / file-based tests).
 
 ## Architecture
 
 - **GitHub Pages**: `index.html` (grader), `rubric.html` (rubric editor) — vanilla JS, no build step
-- **Companion server** (`server.py`): Flask + CORS; exposes `/api/run-compile`, `/api/run-rubric`, `/api/stream`, `/api/results-compile`, `/api/results-rubric`, `/api/config`, `/api/rubric`
-- **Grader** (`grader.py`): Two modes — `--mode compile-run` runs `gcc file.c -o <build_output_dir>/<stem> -lm`, executes that binary, scores stdout vs `expected_output`; `--mode rubric` scores rubric items → `results_rubric.csv`. Executables are kept under `build_output_dir` (default `./output`).
+- **Companion server** (`server.py`): Flask + CORS; exposes `/api/run-compile`, `/api/run-execution`, `/api/run-rubric`, `/api/stream`, `/api/results-compile`, `/api/results-execution`, `/api/results-rubric`, `/api/config`, `/api/rubric`, `/api/test-suites`
+- **Grader** (`grader.py`): Three modes — `--mode compile` runs `gcc file.c -o <build_output_dir>/<stem> -lm` only; `--mode execution` runs those binaries against file suites or `stdin_for_run` / `expected_output`; `--mode rubric` scores rubric items → `results_rubric.csv`. Executables stay under `build_output_dir` (default `./output`).
 - **localStorage**: Rubric editor state + default seed; Grader page stores **Server URL** (`clint_server_url`)
-- **config.json** (on server): paths, `stdin_for_run`, `expected_output`, `execution_max_marks`, LLM keys, CSV output paths
+- **config.json** (on server): paths, test suite flags, `stdin_for_run`, `expected_output`, `execution_max_marks`, LLM keys, CSV paths (`output_compile_csv`, `output_execution_csv`, `output_rubric_csv`)
 
 ## Key Commands
 
@@ -23,7 +23,8 @@ python3 -m http.server 8787
 python3 server.py                    # localhost:5001
 python3 server.py --host 0.0.0.0 --port 5001   # remote browser access
 
-python3 grader.py --mode compile-run
+python3 grader.py --mode compile
+python3 grader.py --mode execution
 python3 grader.py --mode rubric
 
 # Deploy UI: push to main — GitHub Actions → Pages
@@ -37,7 +38,7 @@ clint/
 ├── index.html
 ├── rubric.html
 ├── css/style.css
-├── js/app.js               # Grader UI (two phases, two tables)
+├── js/app.js               # Grader UI (compile, execution, rubric; three tables)
 ├── js/rubric.js            # Rubric CRUD + default seed
 ├── grader.py
 ├── server.py

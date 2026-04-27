@@ -233,7 +233,7 @@
 <main class="page">
   <div class="page-header">
     <h1>Grader</h1>
-    <p>Compile and run student code in one step; score the rubric in a separate step. Two result tables, two CSV exports.</p>
+    <p>Compile all sources, run test cases in a second step, then score the rubric. Three result tables, three CSV exports.</p>
     <p class="page-note">Grading runs only on the companion server you connect to below (<code>python3 server.py</code> on your machine or a lab host). The browser triggers jobs and shows results; it does not compile or execute C. Put submissions where that server’s <code>config.json</code> points (usually next to <code>server.py</code>).</p>
   </div>
 
@@ -283,6 +283,10 @@
       <input id="cfg-output-compile" type="text" placeholder="./results_compile.csv" />
     </div>
     <div class="form-group">
+      <label>Execution report CSV</label>
+      <input id="cfg-output-execution" type="text" placeholder="./results_execution.csv" />
+    </div>
+    <div class="form-group">
       <label>Rubric report CSV</label>
       <input id="cfg-output-rubric" type="text" placeholder="./results_rubric.csv" />
     </div>
@@ -318,9 +322,9 @@
     </div>
   </div>
 
-  <!-- Program execution (used by compile-run phase) -->
+  <!-- Test cases (used by Run execution phase — after compile) -->
   <div class="config-panel" id="execution-panel" style="grid-template-columns:1fr">
-    <h3>Program execution <span style="font-weight:400;color:var(--text-muted)">(after successful compile)</span></h3>
+    <h3>Test cases &amp; execution marks <span style="font-weight:400;color:var(--text-muted)">(Run execution — uses binaries from compile)</span></h3>
     <div class="form-group full-width" style="grid-column:1/-1;display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start">
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
         <input type="checkbox" id="cfg-use-test-suites" />
@@ -360,7 +364,13 @@
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style="margin-right:4px">
           <path d="M4 3l10 5-10 5V3z" fill="currentColor"/>
         </svg>
-        Run compile &amp; execution
+        Run compile
+      </button>
+      <button class="btn btn-ghost btn-run" id="btn-run-execution" disabled style="border:1px solid var(--border)">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style="margin-right:4px">
+          <path d="M4 3l10 5-10 5V3z" fill="currentColor"/>
+        </svg>
+        Run execution
       </button>
       <button class="btn btn-ghost btn-run" id="btn-run-rubric" disabled style="border:1px solid var(--border)">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style="margin-right:4px">
@@ -369,7 +379,7 @@
         Run rubric scoring
       </button>
     </div>
-    <span class="run-meta" id="run-meta">Connect the grader server to enable both phases.</span>
+    <span class="run-meta" id="run-meta">Connect the grader server to enable all phases.</span>
   </div>
 
   <!-- Progress bar -->
@@ -386,10 +396,10 @@
   <!-- Live log -->
   <div class="log-box" id="log-box"></div>
 
-  <!-- Compile & execution report -->
+  <!-- Compile report -->
   <div id="compile-results-section" style="display:none;margin-top:8px">
     <div class="results-header">
-      <h2 id="compile-results-title">Compile &amp; execution report</h2>
+      <h2 id="compile-results-title">Compile report</h2>
       <div style="display:flex;gap:10px">
         <button class="btn btn-ghost btn-sm" id="btn-refresh-compile">Refresh</button>
         <button class="btn btn-primary btn-sm" id="btn-download-compile-csv">Download CSV</button>
@@ -404,7 +414,28 @@
   </div>
   <div class="empty-results" id="empty-compile" style="display:none;margin-bottom:28px">
     <strong>No compile report yet</strong>
-    Click <em>Run compile &amp; execution</em> after setting expected output (optional — stdout is still captured).
+    Click <em>Run compile</em> — gcc only; executable name matches the <code>.c</code> stem.
+  </div>
+
+  <!-- Execution report -->
+  <div id="execution-results-section" style="display:none;margin-top:32px">
+    <div class="results-header">
+      <h2 id="execution-results-title">Execution report</h2>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-ghost btn-sm" id="btn-refresh-execution">Refresh</button>
+        <button class="btn btn-primary btn-sm" id="btn-download-execution-csv">Download CSV</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table id="execution-table">
+        <thead id="execution-thead"></thead>
+        <tbody id="execution-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+  <div class="empty-results" id="empty-execution" style="display:none;margin-bottom:28px">
+    <strong>No execution report yet</strong>
+    Click <em>Run execution</em> after compile (uses test suites or stdin / expected above).
   </div>
 
   <!-- Rubric report -->
@@ -437,6 +468,6 @@
 <!-- ── Toast ────────────────────────────────────────────── -->
 <div id="toast"></div>
 
-<script src="js/app.js?v=7"></script>
+<script src="js/app.js?v=8"></script>
 </body>
 </html>

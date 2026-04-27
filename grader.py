@@ -2,14 +2,16 @@
 """
 grader.py — C-Lab Autograder (local runner)
 
-Two modes (run separately):
-  compile-run  Compile each .c, run binary, compare stdout to expected output
-  rubric       Score rubric items (static / llm / test) per submission
+Three modes (run separately):
+  compile    Compile each .c → executable named like the source stem (no .c)
+  execution  Run existing binaries against test cases (suites or stdin/expected)
+  rubric     Score rubric items (static / llm / test) per submission
 
 Usage:
-    python3 grader.py --mode compile-run
+    python3 grader.py --mode compile
+    python3 grader.py --mode execution
     python3 grader.py --mode rubric
-    python3 grader.py --config config.json --mode compile-run
+    python3 grader.py --config config.json --mode compile
 """
 
 from __future__ import annotations
@@ -365,146 +367,187 @@ def score_test(item: dict, binary: Path, tests_dir: Path, run_timeout: int) -> t
     return marks, f"{passed}/{total} tests passed. {' '.join(details)}."
 
 
-# ── Phase: compile + run + execution score ────────────────────────────────────
+# ── Phase: compile only ───────────────────────────────────────────────────────
 
-def compile_run_file(c_file: Path, config: dict, student_id: str) -> dict:
-    compile_timeout = config.get("compile_timeout_seconds", 10)
-    run_timeout = config.get("run_timeout_seconds", 2)
-    stdin_text = config.get("stdin_for_run", "") or ""
-    expected = config.get("expected_output", "") or ""
-    exec_max = int(config.get("execution_max_marks", 10) or 10)
-    compile_max = int(config.get("compilation_max_marks", 5) or 5)
-    use_suites = bool(config.get("use_test_suites", False))
-
-    compiles, compile_error, binary = compile_c_file(c_file, compile_timeout, config)
-    compilation_marks = compile_max if compiles else 0
-
-    stdout, stderr, run_err = "", "", None
-    exec_marks, match_pct, exec_note = 0, 0.0, ""
-    suite_used = ""
-
-    if compiles and binary:
-        if use_suites:
-            suite_used = resolve_suite_name(student_id, config)
-            suite_dir = test_suites_root(config) / suite_used
-            cases = load_suite_cases(suite_dir)
-            if cases:
-                exec_marks, match_pct, exec_note, stdout, stderr = run_suite_cases(
-                    binary, cases, exec_max, run_timeout
-                )
-                run_err = ""
-            else:
-                exec_note = f"No case_*.stdin / case_*.expected in '{suite_dir}'."
-                run_err = ""
-        else:
-            stdout, stderr, run_err = run_binary(binary, stdin_text, run_timeout)
-            if run_err:
-                exec_note = run_err
-                exec_marks, match_pct = 0, 0.0
-            else:
-                exec_marks, match_pct, exec_note = score_execution_match(stdout, expected, exec_max)
-
-    return {
-        "compiles": compiles,
-        "compile_error": compile_error,
-        "compilation_marks": compilation_marks,
-        "compilation_max": compile_max,
-        "stdout": stdout,
-        "stderr": stderr,
-        "run_error": run_err or "",
-        "execution_marks": exec_marks,
-        "execution_max": exec_max,
-        "match_pct": match_pct,
-        "execution_note": exec_note,
-        "test_suite": suite_used,
-    }
-
-
-def compile_run_all(config: dict) -> list[dict]:
+def compile_only_all(config: dict) -> list[dict]:
+    """Compile each .c; write binary as <build_output_dir>/<stem>. No execution."""
     submissions_dir = Path(config["submissions_dir"])
     id_cfg = config.get("id_extraction", {})
     strategy = id_cfg.get("strategy", "before_first_underscore")
     regex_pat = id_cfg.get("regex")
+    compile_timeout = config.get("compile_timeout_seconds", 10)
 
     c_files = sorted(submissions_dir.glob("**/*.c"))
     if not c_files:
         print(f"[WARN] No .c files found in '{submissions_dir}'")
         return []
 
-    exec_max = int(config.get("execution_max_marks", 10) or 10)
-    compile_max = int(config.get("compilation_max_marks", 5) or 5)
     build_dir = _build_output_dir(config)
     print(f"Found {len(c_files)} submission(s) in '{submissions_dir}'")
-    print(f"gcc output dir: {build_dir}  (executable name = .c stem, e.g. IDNumber.c → IDNumber)")
-    print(f"Compile & run phase — compilation max: {compile_max}, execution max: {exec_max}")
-    if bool(config.get("use_test_suites", False)):
-        print(
-            f"Test suites: {suite_names(config)}  root={test_suites_root(config)}  "
-            f"assignment={config.get('test_suite_strategy', 'mod3_id_charsum')}"
-        )
+    print(f"gcc output dir: {build_dir}  (executable = source stem without .c, e.g. IDNumber.c → IDNumber)")
+    print("Compile-only phase (no execution).")
     print()
 
-    rows = []
+    rows: list[dict] = []
     for idx, c_file in enumerate(c_files, 1):
         sid = extract_student_id(c_file.name, strategy, regex_pat)
         print(f"[{idx:>3}/{len(c_files)}] {sid:<25} ", end="", flush=True)
 
-        r = compile_run_file(c_file, config, sid)
-        cm, cx = r["compilation_marks"], r["compilation_max"]
-        bin_rel = ""
-        if r["compiles"] and (build_dir / c_file.stem).exists():
-            try:
-                bin_rel = str((build_dir / c_file.stem).relative_to(Path.cwd()))
-            except ValueError:
-                bin_rel = str(build_dir / c_file.stem)
-        if r["compiles"] and r["run_error"]:
-            flag = f"✓ Compiles  ✗ Run error  compile {cm}/{cx}"
-        elif r["compiles"]:
-            flag = (
-                f"✓ Compiles  compile {cm}/{cx}  "
-                f"exec {r['execution_marks']}/{exec_max} ({r['match_pct']}% match)"
-            )
-        else:
-            flag = f"✗ No compile  compile {cm}/{cx}"
-        if bool(config.get("use_test_suites", False)) and r.get("test_suite"):
-            flag = f"{flag}  [{r['test_suite']}]"
+        compiles, compile_error, _binary = compile_c_file(c_file, compile_timeout, config)
+        flag = "✓ Compiles" if compiles else "✗ No compile"
         print(flag, flush=True)
 
         rows.append({
             "Student_ID": sid,
-            "File": c_file.name,
-            "Compiles": "Y" if r["compiles"] else "N",
-            "Compile_Error": "" if r["compiles"] else r["compile_error"],
-            "Compilation_Marks": r["compilation_marks"],
-            "Compilation_Max": r["compilation_max"],
-            "Binary_Path": bin_rel,
-            "Test_Suite": r.get("test_suite") or "",
-            "Stdout": r["stdout"],
-            "Stderr": r["stderr"],
-            "Run_Error": r["run_error"] or "",
-            "Execution_Marks": r["execution_marks"] if r["compiles"] and not r["run_error"] else "",
-            "Execution_Max": exec_max,
-            "Match_Pct": f"{r['match_pct']}%" if r["compiles"] and not r["run_error"] else "",
-            "Execution_Note": r["execution_note"],
+            "Filename": c_file.name,
+            "Compiles": "Y" if compiles else "N",
+            "Compile_Error": "" if compiles else compile_error,
         })
     return rows
 
 
 def export_compile_csv(results: list[dict], output_path: str):
     if not results:
-        print("[WARN] No compile-run results to write.")
+        print("[WARN] No compile results to write.")
+        return
+    fieldnames = ["Student_ID", "Filename", "Compiles", "Compile_Error"]
+    with open(output_path, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        w.writeheader()
+        w.writerows(results)
+    print(f"\nCompile report written to: {output_path}")
+
+
+# ── Phase: execution (test cases on existing binaries) ─────────────────────
+
+def execution_run_file(c_file: Path, config: dict, student_id: str) -> dict:
+    """Run binary from build_output_dir/<stem> against suites or stdin/expected."""
+    run_timeout = config.get("run_timeout_seconds", 2)
+    stdin_text = config.get("stdin_for_run", "") or ""
+    expected = config.get("expected_output", "") or ""
+    exec_max = int(config.get("execution_max_marks", 10) or 10)
+    use_suites = bool(config.get("use_test_suites", False))
+    build_dir = _build_output_dir(config)
+    binary = build_dir / c_file.stem
+
+    stdout, stderr, run_err = "", "", None
+    exec_marks, match_pct, exec_note = 0, 0.0, ""
+    suite_used = ""
+    bin_rel = ""
+
+    if not binary.is_file():
+        return {
+            "Student_ID": student_id,
+            "Filename": c_file.name,
+            "Binary_Path": "",
+            "Test_Suite": "",
+            "Execution_Marks": 0,
+            "Execution_Max": exec_max,
+            "Match_Pct": "",
+            "Execution_Note": "Binary not found — run compile first.",
+            "Run_Error": "",
+            "Stdout": "",
+            "Stderr": "",
+        }
+
+    try:
+        bin_rel = str(binary.relative_to(Path.cwd()))
+    except ValueError:
+        bin_rel = str(binary)
+
+    if use_suites:
+        suite_used = resolve_suite_name(student_id, config)
+        suite_dir = test_suites_root(config) / suite_used
+        cases = load_suite_cases(suite_dir)
+        if cases:
+            exec_marks, match_pct, exec_note, stdout, stderr = run_suite_cases(
+                binary, cases, exec_max, run_timeout
+            )
+            run_err = ""
+        else:
+            exec_note = f"No case_*.stdin / case_*.expected in '{suite_dir}'."
+            run_err = ""
+    else:
+        stdout, stderr, run_err = run_binary(binary, stdin_text, run_timeout)
+        if run_err:
+            exec_note = run_err
+            exec_marks, match_pct = 0, 0.0
+        else:
+            exec_marks, match_pct, exec_note = score_execution_match(stdout, expected, exec_max)
+
+    return {
+        "Student_ID": student_id,
+        "Filename": c_file.name,
+        "Binary_Path": bin_rel,
+        "Test_Suite": suite_used,
+        "Execution_Marks": exec_marks if not run_err else 0,
+        "Execution_Max": exec_max,
+        "Match_Pct": f"{match_pct}%" if not run_err else "",
+        "Execution_Note": exec_note,
+        "Run_Error": run_err or "",
+        "Stdout": stdout,
+        "Stderr": stderr,
+    }
+
+
+def execution_run_all(config: dict) -> list[dict]:
+    submissions_dir = Path(config["submissions_dir"])
+    id_cfg = config.get("id_extraction", {})
+    strategy = id_cfg.get("strategy", "before_first_underscore")
+    regex_pat = id_cfg.get("regex")
+    exec_max = int(config.get("execution_max_marks", 10) or 10)
+
+    c_files = sorted(submissions_dir.glob("**/*.c"))
+    if not c_files:
+        print(f"[WARN] No .c files found in '{submissions_dir}'")
+        return []
+
+    build_dir = _build_output_dir(config)
+    print(f"Found {len(c_files)} submission(s) in '{submissions_dir}'")
+    print(f"Execution phase — binaries under {build_dir}, execution max: {exec_max}")
+    if bool(config.get("use_test_suites", False)):
+        print(
+            f"Test suites: {suite_names(config)}  root={test_suites_root(config)}  "
+            f"assignment={config.get('test_suite_strategy', 'mod3_id_charsum')}"
+        )
+    else:
+        print("Single-run mode: stdin + expected stdout from config.")
+    print()
+
+    rows: list[dict] = []
+    for idx, c_file in enumerate(c_files, 1):
+        sid = extract_student_id(c_file.name, strategy, regex_pat)
+        print(f"[{idx:>3}/{len(c_files)}] {sid:<25} ", end="", flush=True)
+
+        r = execution_run_file(c_file, config, sid)
+        if r.get("Run_Error"):
+            flag = f"✗ Run error  exec {r['Execution_Marks']}/{exec_max}"
+        elif r["Execution_Note"].startswith("Binary not found"):
+            flag = f"—  {r['Execution_Note']}"
+        else:
+            flag = f"exec {r['Execution_Marks']}/{exec_max} ({r.get('Match_Pct') or '0%'} match)"
+        if bool(config.get("use_test_suites", False)) and r.get("Test_Suite"):
+            flag = f"{flag}  [{r['Test_Suite']}]"
+        print(flag, flush=True)
+
+        rows.append(dict(r))
+    return rows
+
+
+def export_execution_csv(results: list[dict], output_path: str):
+    if not results:
+        print("[WARN] No execution results to write.")
         return
     fieldnames = [
-        "Student_ID", "File", "Compiles", "Compile_Error",
-        "Compilation_Marks", "Compilation_Max", "Binary_Path", "Test_Suite",
-        "Stdout", "Stderr", "Run_Error",
+        "Student_ID", "Filename", "Binary_Path", "Test_Suite",
         "Execution_Marks", "Execution_Max", "Match_Pct", "Execution_Note",
+        "Run_Error", "Stdout", "Stderr",
     ]
     with open(output_path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         w.writeheader()
         w.writerows(results)
-    print(f"\nCompile & execution report written to: {output_path}")
+    print(f"\nExecution report written to: {output_path}")
 
 
 # ── Phase: rubric only ────────────────────────────────────────────────────────
@@ -612,9 +655,9 @@ def main():
     parser.add_argument("--rubric", help="Override rubric JSON file")
     parser.add_argument(
         "--mode",
-        choices=("compile-run", "rubric"),
+        choices=("compile", "execution", "rubric"),
         required=True,
-        help="compile-run: compile + execute + output match. rubric: rubric items only.",
+        help="compile: gcc only. execution: run binaries vs test cases. rubric: rubric items only.",
     )
     args = parser.parse_args()
 
@@ -635,14 +678,21 @@ def main():
         sys.exit(1)
 
     out_compile = config.get("output_compile_csv", "./results_compile.csv")
+    out_execution = config.get("output_execution_csv", "./results_execution.csv")
     out_rubric = config.get("output_rubric_csv", "./results_rubric.csv")
 
-    if args.mode == "compile-run":
-        results = compile_run_all(config)
+    if args.mode == "compile":
+        results = compile_only_all(config)
         if results:
             ok = sum(1 for r in results if r["Compiles"] == "Y")
             print(f"Summary: {ok}/{len(results)} compiled successfully.")
         export_compile_csv(results, out_compile)
+
+    elif args.mode == "execution":
+        results = execution_run_all(config)
+        if results:
+            print(f"Summary: {len(results)} submission(s) processed.")
+        export_execution_csv(results, out_execution)
 
     else:  # rubric
         rubric_path = Path(config.get("rubric_file", "./rubric.json"))

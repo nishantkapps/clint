@@ -1,6 +1,8 @@
 results.csv
 results_compile.csv
+results_execution.csv
 results_rubric.csv
+config.json
 submissions/
 output/
 __pycache__/

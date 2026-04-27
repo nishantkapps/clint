@@ -1,5 +1,5 @@
 /**
- * app.js — Grader page (compile + execution vs rubric as separate phases)
+ * app.js — Grader page (compile, execution, rubric as separate phases)
  */
 
 const SERVER_KEY = 'clint_server_url';
@@ -7,14 +7,16 @@ let SERVER = localStorage.getItem(SERVER_KEY) || 'http://localhost:5001';
 
 let connected = false;
 let running = false;
-let runningMode = null; // 'compile-run' | 'rubric'
+let runningMode = null; // 'compile' | 'execution' | 'rubric'
 
 let csvCompile = { headers: [], rows: [] };
+let csvExecution = { headers: [], rows: [] };
 let csvRubric = { headers: [], rows: [] };
 let rubricItems = [];
 
 const banner = document.getElementById('server-banner');
 const btnCompile = document.getElementById('btn-run-compile');
+const btnExecution = document.getElementById('btn-run-execution');
 const btnRubric = document.getElementById('btn-run-rubric');
 const runMeta = document.getElementById('run-meta');
 const logBox = document.getElementById('log-box');
@@ -33,6 +35,7 @@ async function checkServer() {
       loadConfig();
       loadRubric();
       tryLoadCompileResults();
+      tryLoadExecutionResults();
       tryLoadRubricResults();
       return;
     }
@@ -48,9 +51,10 @@ function setConnected(ok) {
     : 'Grader server not found. Check the URL or run: python3 server.py';
   document.getElementById('server-url-display').textContent = SERVER;
   btnCompile.disabled = !ok || running;
+  btnExecution.disabled = !ok || running;
   btnRubric.disabled = !ok || running;
   runMeta.textContent = ok
-    ? 'Run compile & execution first, then rubric scoring (or either alone).'
+    ? 'Compile first, then run execution (test cases), then rubric — or any step alone.'
     : 'Connect to the grader server.';
 }
 
@@ -91,6 +95,7 @@ async function loadConfig() {
     if (cfg.build_output_dir != null) document.getElementById('cfg-build-output').value = cfg.build_output_dir;
     if (cfg.rubric_file) document.getElementById('cfg-rubric').value = cfg.rubric_file;
     if (cfg.output_compile_csv) document.getElementById('cfg-output-compile').value = cfg.output_compile_csv;
+    if (cfg.output_execution_csv) document.getElementById('cfg-output-execution').value = cfg.output_execution_csv;
     if (cfg.output_rubric_csv) document.getElementById('cfg-output-rubric').value = cfg.output_rubric_csv;
     const strat = cfg.id_extraction?.strategy || 'before_first_underscore';
     document.getElementById('cfg-id-strategy').value = strat;
@@ -120,6 +125,7 @@ async function saveConfig() {
     build_output_dir: document.getElementById('cfg-build-output').value || './output',
     rubric_file: document.getElementById('cfg-rubric').value || './rubric.json',
     output_compile_csv: document.getElementById('cfg-output-compile').value || './results_compile.csv',
+    output_execution_csv: document.getElementById('cfg-output-execution').value || './results_execution.csv',
     output_rubric_csv: document.getElementById('cfg-output-rubric').value || './results_rubric.csv',
     id_extraction: {
       strategy,
@@ -194,24 +200,45 @@ function renderRubricLegend(items) {
 
 /* ── Run phases ───────────────────────────────────────────── */
 
-btnCompile.addEventListener('click', () => startPhase('compile-run', '/api/run-compile'));
-btnRubric.addEventListener('click', () => startPhase('rubric', '/api/run-rubric'));
+const PHASE_ENDPOINT = {
+  compile: '/api/run-compile',
+  execution: '/api/run-execution',
+  rubric: '/api/run-rubric',
+};
 
-async function startPhase(mode, endpoint) {
+function phaseButton(mode) {
+  if (mode === 'compile') return btnCompile;
+  if (mode === 'execution') return btnExecution;
+  return btnRubric;
+}
+
+const PHASE_PROGRESS = {
+  compile: 'Compiling…',
+  execution: 'Running tests…',
+  rubric: 'Scoring rubric…',
+};
+
+btnCompile.addEventListener('click', () => startPhase('compile'));
+btnExecution.addEventListener('click', () => startPhase('execution'));
+btnRubric.addEventListener('click', () => startPhase('rubric'));
+
+async function startPhase(mode) {
   if (!connected || running) return;
   await saveConfig();
   running = true;
   runningMode = mode;
   btnCompile.disabled = true;
+  btnExecution.disabled = true;
   btnRubric.disabled = true;
 
-  const btn = mode === 'compile-run' ? btnCompile : btnRubric;
+  const endpoint = PHASE_ENDPOINT[mode];
+  const btn = phaseButton(mode);
   const orig = btn.innerHTML;
   btn.innerHTML = `<span style="animation:spin 1s linear infinite;display:inline-block">⟳</span> Running…`;
 
   clearLog();
   showProgress(true);
-  setProgress(0, mode === 'compile-run' ? 'Compiling & running…' : 'Scoring rubric…');
+  setProgress(0, PHASE_PROGRESS[mode] || 'Running…');
 
   try {
     const res = await fetch(`${SERVER}${endpoint}`, {
@@ -233,6 +260,7 @@ async function startPhase(mode, endpoint) {
 
   const es = new EventSource(`${SERVER}/api/stream`);
   let total = 0;
+  let done = 0;
 
   es.onmessage = (e) => {
     const msg = JSON.parse(e.data);
@@ -244,7 +272,8 @@ async function startPhase(mode, endpoint) {
       finishRun(true, btn, orig);
       setTimeout(() => {
         loadRubric();
-        if (mode === 'compile-run') tryLoadCompileResults();
+        if (mode === 'compile') tryLoadCompileResults();
+        else if (mode === 'execution') tryLoadExecutionResults();
         else tryLoadRubricResults();
       }, 500);
       return;
@@ -264,7 +293,8 @@ async function startPhase(mode, endpoint) {
     let cls = 'info';
     if (line.includes('✓')) cls = 'ok';
     else if (line.includes('✗') || line.toLowerCase().includes('error')) cls = 'err';
-    else if (line.startsWith('Found') || line.startsWith('Rubric') || line.startsWith('Compile') || line.startsWith('Summary') || line.startsWith('Average')) cls = 'bold';
+    else if (line.startsWith('Found') || line.startsWith('Rubric') || line.startsWith('Compile')
+        || line.startsWith('Execution') || line.startsWith('Summary') || line.startsWith('Average')) cls = 'bold';
     appendLog(line, cls);
   };
 
@@ -278,6 +308,7 @@ function finishRun(success, btn, origHtml) {
   running = false;
   runningMode = null;
   btnCompile.disabled = !connected;
+  btnExecution.disabled = !connected;
   btnRubric.disabled = !connected;
   if (btn && origHtml) btn.innerHTML = origHtml;
   runMeta.textContent = success
@@ -333,6 +364,32 @@ async function tryLoadCompileResults() {
   }
 }
 
+async function tryLoadExecutionResults() {
+  const sec = document.getElementById('execution-results-section');
+  const empty = document.getElementById('empty-execution');
+  try {
+    const res = await fetch(`${SERVER}/api/results-execution`);
+    if (!res.ok) {
+      sec.style.display = 'none';
+      empty.style.display = 'block';
+      return;
+    }
+    const data = await res.json();
+    csvExecution = data;
+    if (data.rows?.length) {
+      renderExecutionTable(data.headers, data.rows);
+      sec.style.display = 'block';
+      empty.style.display = 'none';
+    } else {
+      sec.style.display = 'none';
+      empty.style.display = 'block';
+    }
+  } catch (_) {
+    sec.style.display = 'none';
+    empty.style.display = 'block';
+  }
+}
+
 async function tryLoadRubricResults() {
   const sec = document.getElementById('rubric-results-section');
   const empty = document.getElementById('empty-rubric');
@@ -363,21 +420,27 @@ async function tryLoadRubricResults() {
 
 function renderCompileTable(headers, rows) {
   document.getElementById('compile-results-title').textContent =
-    `Compile & execution report — ${rows.length} student${rows.length !== 1 ? 's' : ''}`;
+    `Compile report — ${rows.length} student${rows.length !== 1 ? 's' : ''}`;
+
+  const preferred = ['Student_ID', 'Filename', 'Compiles', 'Compile_Error'];
+  const legacyFile = headers.includes('File') && !headers.includes('Filename');
+  const displayHeaders = preferred.filter(h => {
+    if (h === 'Filename') return headers.includes('Filename') || legacyFile;
+    return headers.includes(h);
+  });
+  const cellKey = h => (h === 'Filename' && legacyFile && !headers.includes('Filename') ? 'File' : h);
 
   const thead = document.getElementById('compile-thead');
   const tbody = document.getElementById('compile-tbody');
-  thead.innerHTML = '<tr>' + headers.map(h => `<th>${esc(h.replace(/_/g, ' '))}</th>`).join('') + '</tr>';
+  thead.innerHTML = '<tr>' + displayHeaders.map(h => `<th>${esc(h.replace(/_/g, ' '))}</th>`).join('') + '</tr>';
 
-  const longCols = new Set(['Stdout', 'Stderr', 'Compile_Error', 'Execution_Note', 'Binary_Path']);
-  const compIdx = headers.indexOf('Compiles');
-  const compMaxIdx = headers.indexOf('Compilation_Max');
-  const execM = headers.indexOf('Execution_Marks');
-  const execMax = headers.indexOf('Execution_Max');
+  const longCols = new Set(['Compile_Error']);
+  const compIdx = displayHeaders.indexOf('Compiles');
 
   tbody.innerHTML = rows.map(row => {
-    return '<tr>' + headers.map((h, i) => {
-      let val = row[h] ?? '';
+    return '<tr>' + displayHeaders.map((h, i) => {
+      const key = cellKey(h);
+      let val = row[key] ?? '';
       let cls = '';
       let display = esc(String(val));
 
@@ -387,13 +450,34 @@ function renderCompileTable(headers, rows) {
         display = esc(String(val).slice(0, 100)) + '…';
       }
 
-      if (h === 'Compilation_Marks' && compMaxIdx !== -1 && val !== '') {
-        const m = Number(val) || 0;
-        const mx = Number(row['Compilation_Max']) || 1;
-        const ratio = m / mx;
-        cls = ratio >= 1 ? 'score-full' : ratio > 0 ? 'score-partial' : 'score-zero';
-        display = `${m}<span class="score-max">/${mx}</span>`;
-      } else if (h === 'Execution_Marks' && execMax !== -1 && val !== '') {
+      return `<td class="${cls}" title="${esc(String(val))}">${display}</td>`;
+    }).join('') + '</tr>';
+  }).join('');
+}
+
+function renderExecutionTable(headers, rows) {
+  document.getElementById('execution-results-title').textContent =
+    `Execution report — ${rows.length} student${rows.length !== 1 ? 's' : ''}`;
+
+  const thead = document.getElementById('execution-thead');
+  const tbody = document.getElementById('execution-tbody');
+  thead.innerHTML = '<tr>' + headers.map(h => `<th>${esc(h.replace(/_/g, ' '))}</th>`).join('') + '</tr>';
+
+  const longCols = new Set(['Stdout', 'Stderr', 'Execution_Note', 'Binary_Path', 'Run_Error']);
+  const execM = headers.indexOf('Execution_Marks');
+  const execMax = headers.indexOf('Execution_Max');
+
+  tbody.innerHTML = rows.map(row => {
+    return '<tr>' + headers.map((h, i) => {
+      let val = row[h] ?? '';
+      let cls = '';
+      let display = esc(String(val));
+
+      if (longCols.has(h) && String(val).length > 100) {
+        display = esc(String(val).slice(0, 100)) + '…';
+      }
+
+      if (h === 'Execution_Marks' && execMax !== -1 && val !== '') {
         const m = Number(val) || 0;
         const mx = Number(row['Execution_Max']) || 1;
         const ratio = m / mx;
@@ -450,10 +534,14 @@ function renderRubricTable(headers, rows) {
 }
 
 document.getElementById('btn-refresh-compile').addEventListener('click', tryLoadCompileResults);
+document.getElementById('btn-refresh-execution').addEventListener('click', tryLoadExecutionResults);
 document.getElementById('btn-refresh-rubric').addEventListener('click', tryLoadRubricResults);
 
 document.getElementById('btn-download-compile-csv').addEventListener('click', () => {
   downloadCsv(csvCompile, 'results_compile.csv');
+});
+document.getElementById('btn-download-execution-csv').addEventListener('click', () => {
+  downloadCsv(csvExecution, 'results_execution.csv');
 });
 document.getElementById('btn-download-rubric-csv').addEventListener('click', () => {
   downloadCsv(csvRubric, 'results_rubric.csv');

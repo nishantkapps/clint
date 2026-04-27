@@ -1,6 +1,6 @@
 # C-Lab Autograder (clint)
 
-A web-based autograder for C programming labs. The UI is hosted on GitHub Pages and talks to a companion Python server that runs `gcc`, executes programs, compares output to your expected text, and scores rubric items in **two separate phases** (two result tables, two CSV files).
+A web-based autograder for C programming labs. The UI is hosted on GitHub Pages and talks to a companion Python server that runs `gcc`, runs programs against test cases, and scores rubric items in **separate phases** (three result tables: compile, execution, rubric; three CSV files).
 
 **Live app:** https://nishantkapps.github.io/clint
 
@@ -13,8 +13,9 @@ Browser (GitHub Pages)
     │
     │  HTTP (fetch / SSE)
     ▼
-server.py  ──►  grader.py --mode compile-run  ──►  gcc + run  ──►  results_compile.csv
-         └──►  grader.py --mode rubric       ──►  gcc + LLM   ──►  results_rubric.csv
+server.py  ──►  grader.py --mode compile    ──►  gcc only      ──►  results_compile.csv
+         ├──►  grader.py --mode execution ──►  run binaries  ──►  results_execution.csv
+         └──►  grader.py --mode rubric     ──►  gcc + LLM     ──►  results_rubric.csv
 ```
 
 The browser never touches student code. All compilation and grading happens on the machine running `server.py`.
@@ -162,22 +163,26 @@ The app at https://nishantkapps.github.io/clint connects to `localhost:5001` whi
 | `llm` | The student's code and the criterion description are sent to an LLM (Claude or GPT). The LLM returns a score and a reason. |
 | `test` | The compiled binary is run against input/expected-output pairs in `test_cases/<key>/`. Score is proportional to test cases passed. |
 
-### Run grading (two separate steps)
+### Run grading (three separate steps)
 
 1. Start `server.py` on the machine that has the `.c` files (see setup above).
 2. Open https://nishantkapps.github.io/clint (set **Server URL** if using a remote machine).
-3. **Compile & execution** — For each `IDNumber.c`, the grader runs **`gcc /path/to/IDNumber.c -o <build_output_dir>/IDNumber -w -lm`**. The executable has the **same basename as the source file** (no `.c`). Binaries are **left in `build_output_dir`** (default `./output`) so you can inspect them. Then that binary is executed (2s timeout), stdout/stderr are captured, and output is scored: **exact match after normalization = full marks**; otherwise **partial marks** via `difflib` similarity. Set **Expected stdout**, optional **Stdin**, and **Execution max marks**, then click **Run compile & execution**.
-4. **Rubric scoring** — Ensure `rubric.json` is on the server. Enter LLM API key if you use `llm` items. Click **Run rubric scoring** separately when you want rubric-only results.
-5. Two tables appear: **Compile & execution report** and **Rubric report**, each with its own Refresh and Download CSV.
+3. **Compile** — For each `IDNumber.c`, the grader runs **`gcc /path/to/IDNumber.c -o <build_output_dir>/IDNumber -w -lm`**. The executable has the **same basename as the source file** (no `.c`). Binaries are **left in `build_output_dir`** so you can inspect them. Click **Run compile** (no execution in this step).
+4. **Execution** — Set **Expected stdout**, optional **Stdin**, and **Execution max marks**, or enable **file-based test suites** and edit cases on the **Test cases** page. Click **Run execution** to run each retained binary (2s timeout per run), score stdout vs expected output (exact match after normalization = full marks; otherwise partial marks via `difflib`).
+5. **Rubric scoring** — Ensure `rubric.json` is on the server. Enter LLM API key if you use `llm` items. Click **Run rubric scoring** when you want rubric-only results.
+6. Three tables appear: **Compile report**, **Execution report**, and **Rubric report**, each with Refresh and Download CSV.
 
 ### Result files
 
 | File | Written by |
 |------|------------|
-| `results_compile.csv` (path: `output_compile_csv`) | **Run compile & execution** |
+| `results_compile.csv` (path: `output_compile_csv`) | **Run compile** |
+| `results_execution.csv` (path: `output_execution_csv`) | **Run execution** |
 | `results_rubric.csv` (path: `output_rubric_csv`) | **Run rubric scoring** |
 
-**Compile report columns:** `Student_ID`, `File`, `Compiles`, `Compile_Error`, `Compilation_Marks`, `Compilation_Max`, `Binary_Path`, `Stdout`, `Stderr`, `Run_Error`, `Execution_Marks`, `Execution_Max`, `Match_Pct`, `Execution_Note` (`Binary_Path` = path to the retained executable, e.g. `output/2025A5PS0838H` for `2025A5PS0838H.c`)
+**Compile report columns:** `Student_ID`, `Filename`, `Compiles`, `Compile_Error`
+
+**Execution report columns:** `Student_ID`, `Filename`, `Binary_Path`, `Test_Suite`, `Execution_Marks`, `Execution_Max`, `Match_Pct`, `Execution_Note`, `Run_Error`, `Stdout`, `Stderr`
 
 **Rubric report columns:** `Student_ID`, `File`, `Rubric_1`, `Rubric_2`, …, `Total_Score`, `Max_Score`, `Feedback` (compile status is not included — use the compile report for that.)
 
@@ -190,7 +195,8 @@ The app at https://nishantkapps.github.io/clint connects to `localhost:5001` whi
 | `build_output_dir` | `./output` | Where `gcc -o` writes executables (same stem as each `.c` file) |
 | `submissions_dir` | `./submissions` | Folder containing student `.c` files |
 | `rubric_file` | `./rubric.json` | Rubric exported from the editor |
-| `output_compile_csv` | `./results_compile.csv` | Compile & execution report |
+| `output_compile_csv` | `./results_compile.csv` | Compile-only report |
+| `output_execution_csv` | `./results_execution.csv` | Execution / test-case report |
 | `output_rubric_csv` | `./results_rubric.csv` | Rubric-only report |
 | `stdin_for_run` | `""` | Text fed to stdin when running each compiled binary |
 | `expected_output` | `""` | Expected stdout for execution scoring (exact = full marks) |
@@ -225,9 +231,10 @@ python3 server.py
 python3 server.py --host 0.0.0.0 --port 5001
 
 # Run grader from command line (no browser needed)
-python3 grader.py --mode compile-run
+python3 grader.py --mode compile
+python3 grader.py --mode execution
 python3 grader.py --mode rubric
-python3 grader.py --config config.json --mode compile-run
+python3 grader.py --config config.json --mode compile
 
 # Update the app (pulls latest code and redeploys via GitHub Actions)
 git pull && git push
@@ -245,7 +252,7 @@ clint/
 ├── js/
 │   ├── app.js              # Grader page logic
 │   └── rubric.js           # Rubric editor logic
-├── grader.py               # Two modes: compile-run | rubric
+├── grader.py               # Modes: compile | execution | rubric
 ├── server.py               # Flask companion server
 ├── config.json             # Runtime configuration
 ├── rubric.json             # Active rubric (edit via rubric.html, then copy here)
@@ -253,6 +260,7 @@ clint/
 ├── submissions/            # Drop student .c files here (git-ignored)
 ├── test_cases/             # test_cases/<key>/input_N.txt + expected_N.txt
 ├── results_compile.csv     # Generated (git-ignored)
+├── results_execution.csv   # Generated (git-ignored)
 ├── results_rubric.csv      # Generated (git-ignored)
 ├── requirements.txt        # Python dependencies
 ├── CLAUDE.md               # Developer reference
