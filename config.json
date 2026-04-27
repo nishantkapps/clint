@@ -1,4 +1,5 @@
 {
+  "build_output_dir": "./output",
   "submissions_dir": "./submissions",
   "rubric_file": "./rubric.json",
   "output_compile_csv": "./results_compile.csv",

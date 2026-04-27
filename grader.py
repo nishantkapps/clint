@@ -22,7 +22,6 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 
@@ -57,18 +56,51 @@ def extract_student_id(filename: str, strategy: str, regex_pattern: str = None) 
 
 # ── Compile & run ─────────────────────────────────────────────────────────────
 
-def compile_c_file(c_file: Path, compile_timeout: int) -> tuple[bool, str, Path | None]:
-    tmp_dir = tempfile.mkdtemp(prefix="clint_")
-    binary = Path(tmp_dir) / "a.out"
+def _build_output_dir(config: dict) -> Path:
+    """Directory where gcc writes executables (kept after grading)."""
+    return Path(config.get("build_output_dir", "./output")).expanduser().resolve()
+
+
+def compile_c_file(
+    c_file: Path,
+    compile_timeout: int,
+    config: dict,
+) -> tuple[bool, str, Path | None]:
+    """
+    Run gcc with a named executable matching the source stem:
+
+        gcc <absolute_path_to/IDNumber.c> -o <build_output_dir>/IDNumber -w -lm
+
+    Example: submissions/2025A5PS0838H.c → output/2025A5PS0838H (no .c extension).
+    The binary is left on disk under build_output_dir for inspection.
+    """
+    build_dir = _build_output_dir(config)
+    build_dir.mkdir(parents=True, exist_ok=True)
+
+    src = c_file.resolve()
+    binary = build_dir / c_file.stem
+    if binary.exists():
+        binary.unlink()
+
     try:
         result = subprocess.run(
-            ["gcc", str(c_file), "-o", str(binary), "-w", "-lm"],
-            capture_output=True, text=True, timeout=compile_timeout,
+            ["gcc", str(src), "-o", str(binary), "-w", "-lm"],
+            capture_output=True,
+            text=True,
+            timeout=compile_timeout,
         )
         if result.returncode == 0:
+            try:
+                os.chmod(binary, 0o755)
+            except OSError:
+                pass
             return True, "", binary
+        if binary.exists():
+            binary.unlink()
         return False, result.stderr.strip(), None
     except subprocess.TimeoutExpired:
+        if binary.exists():
+            binary.unlink()
         return False, "Compilation timed out.", None
     except FileNotFoundError:
         print("\n[ERROR] gcc not found. Install with: sudo apt-get install gcc\n")
@@ -270,7 +302,7 @@ def compile_run_file(c_file: Path, config: dict) -> dict:
     exec_max = int(config.get("execution_max_marks", 10) or 10)
     compile_max = int(config.get("compilation_max_marks", 5) or 5)
 
-    compiles, compile_error, binary = compile_c_file(c_file, compile_timeout)
+    compiles, compile_error, binary = compile_c_file(c_file, compile_timeout, config)
     compilation_marks = compile_max if compiles else 0
 
     stdout, stderr, run_err = "", "", None
@@ -283,13 +315,6 @@ def compile_run_file(c_file: Path, config: dict) -> dict:
             exec_marks, match_pct = 0, 0.0
         else:
             exec_marks, match_pct, exec_note = score_execution_match(stdout, expected, exec_max)
-
-    if binary and binary.exists():
-        binary.unlink()
-        try:
-            binary.parent.rmdir()
-        except OSError:
-            pass
 
     return {
         "compiles": compiles,
@@ -319,7 +344,9 @@ def compile_run_all(config: dict) -> list[dict]:
 
     exec_max = int(config.get("execution_max_marks", 10) or 10)
     compile_max = int(config.get("compilation_max_marks", 5) or 5)
+    build_dir = _build_output_dir(config)
     print(f"Found {len(c_files)} submission(s) in '{submissions_dir}'")
+    print(f"gcc output dir: {build_dir}  (executable name = .c stem, e.g. IDNumber.c → IDNumber)")
     print(f"Compile & run phase — compilation max: {compile_max}, execution max: {exec_max}")
     print()
 
@@ -330,6 +357,12 @@ def compile_run_all(config: dict) -> list[dict]:
 
         r = compile_run_file(c_file, config)
         cm, cx = r["compilation_marks"], r["compilation_max"]
+        bin_rel = ""
+        if r["compiles"] and (build_dir / c_file.stem).exists():
+            try:
+                bin_rel = str((build_dir / c_file.stem).relative_to(Path.cwd()))
+            except ValueError:
+                bin_rel = str(build_dir / c_file.stem)
         if r["compiles"] and r["run_error"]:
             flag = f"✓ Compiles  ✗ Run error  compile {cm}/{cx}"
         elif r["compiles"]:
@@ -348,6 +381,7 @@ def compile_run_all(config: dict) -> list[dict]:
             "Compile_Error": "" if r["compiles"] else r["compile_error"],
             "Compilation_Marks": r["compilation_marks"],
             "Compilation_Max": r["compilation_max"],
+            "Binary_Path": bin_rel,
             "Stdout": r["stdout"],
             "Stderr": r["stderr"],
             "Run_Error": r["run_error"] or "",
@@ -365,7 +399,7 @@ def export_compile_csv(results: list[dict], output_path: str):
         return
     fieldnames = [
         "Student_ID", "File", "Compiles", "Compile_Error",
-        "Compilation_Marks", "Compilation_Max",
+        "Compilation_Marks", "Compilation_Max", "Binary_Path",
         "Stdout", "Stderr", "Run_Error",
         "Execution_Marks", "Execution_Max", "Match_Pct", "Execution_Note",
     ]
@@ -384,7 +418,7 @@ def grade_rubric_file(c_file: Path, rubric_items: list[dict], config: dict) -> d
     tests_dir = Path(config.get("tests_dir", "./test_cases"))
     llm_config = config
 
-    compiles, compile_error, binary = compile_c_file(c_file, compile_timeout)
+    compiles, compile_error, binary = compile_c_file(c_file, compile_timeout, config)
     code = c_file.read_text(errors="replace")
 
     scores, feedback = {}, []
@@ -409,13 +443,6 @@ def grade_rubric_file(c_file: Path, rubric_items: list[dict], config: dict) -> d
         feedback.append(f"Rubric {n} — {item['name']} ({marks}/{max_marks}): {reason}")
 
     total = sum(scores.values())
-
-    if binary and binary.exists():
-        binary.unlink()
-        try:
-            binary.parent.rmdir()
-        except OSError:
-            pass
 
     return {
         "compiles": compiles,

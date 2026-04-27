@@ -261,6 +261,10 @@
       <input id="cfg-submissions" type="text" placeholder="./submissions" />
     </div>
     <div class="form-group">
+      <label>Build output folder <span style="font-weight:400;color:var(--text-muted)">(gcc -o here; exe = same name as .c without extension)</span></label>
+      <input id="cfg-build-output" type="text" placeholder="./output" />
+    </div>
+    <div class="form-group">
       <label>Rubric JSON</label>
       <input id="cfg-rubric" type="text" placeholder="./rubric.json" />
     </div>
@@ -277,7 +281,7 @@
       <select id="cfg-id-strategy">
         <option value="before_first_underscore">Before first _ (e.g. ID_lab1.c)</option>
         <option value="after_last_underscore">After last _ (e.g. lab1_ID.c)</option>
-        <option value="whole_filename">Whole filename (e.g. ID.c)</option>
+        <option value="whole_filename">Whole stem (e.g. 2025A5PS0838H.c → ID 2025A5PS0838H)</option>
         <option value="regex">Custom regex</option>
       </select>
     </div>
@@ -409,6 +413,6 @@
 <!-- ── Toast ────────────────────────────────────────────── -->
 <div id="toast"></div>
 
-<script src="js/app.js?v=5"></script>
+<script src="js/app.js?v=6"></script>
 </body>
 </html>

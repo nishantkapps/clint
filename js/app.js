@@ -88,6 +88,7 @@ async function loadConfig() {
     if (!res.ok) return;
     const cfg = await res.json();
     if (cfg.submissions_dir) document.getElementById('cfg-submissions').value = cfg.submissions_dir;
+    if (cfg.build_output_dir != null) document.getElementById('cfg-build-output').value = cfg.build_output_dir;
     if (cfg.rubric_file) document.getElementById('cfg-rubric').value = cfg.rubric_file;
     if (cfg.output_compile_csv) document.getElementById('cfg-output-compile').value = cfg.output_compile_csv;
     if (cfg.output_rubric_csv) document.getElementById('cfg-output-rubric').value = cfg.output_rubric_csv;
@@ -111,6 +112,7 @@ async function saveConfig() {
   const strategy = document.getElementById('cfg-id-strategy').value;
   const cfg = {
     submissions_dir: document.getElementById('cfg-submissions').value || './submissions',
+    build_output_dir: document.getElementById('cfg-build-output').value || './output',
     rubric_file: document.getElementById('cfg-rubric').value || './rubric.json',
     output_compile_csv: document.getElementById('cfg-output-compile').value || './results_compile.csv',
     output_rubric_csv: document.getElementById('cfg-output-rubric').value || './results_rubric.csv',
@@ -354,7 +356,7 @@ function renderCompileTable(headers, rows) {
   const tbody = document.getElementById('compile-tbody');
   thead.innerHTML = '<tr>' + headers.map(h => `<th>${esc(h.replace(/_/g, ' '))}</th>`).join('') + '</tr>';
 
-  const longCols = new Set(['Stdout', 'Stderr', 'Compile_Error', 'Execution_Note']);
+  const longCols = new Set(['Stdout', 'Stderr', 'Compile_Error', 'Execution_Note', 'Binary_Path']);
   const compIdx = headers.indexOf('Compiles');
   const compMaxIdx = headers.indexOf('Compilation_Max');
   const execM = headers.indexOf('Execution_Marks');

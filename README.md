@@ -166,7 +166,7 @@ The app at https://nishantkapps.github.io/clint connects to `localhost:5001` whi
 
 1. Start `server.py` on the machine that has the `.c` files (see setup above).
 2. Open https://nishantkapps.github.io/clint (set **Server URL** if using a remote machine).
-3. **Compile & execution** — In *Program execution*, enter **Expected stdout** (what the program should print). Optional **Stdin** and **Execution max marks**. Click **Run compile & execution**. This compiles each file, runs the binary (2s timeout), captures stdout/stderr, and scores output: **exact match after normalization = full marks**; otherwise **partial marks** proportional to string similarity (`difflib`).
+3. **Compile & execution** — For each `IDNumber.c`, the grader runs **`gcc /path/to/IDNumber.c -o <build_output_dir>/IDNumber -w -lm`**. The executable has the **same basename as the source file** (no `.c`). Binaries are **left in `build_output_dir`** (default `./output`) so you can inspect them. Then that binary is executed (2s timeout), stdout/stderr are captured, and output is scored: **exact match after normalization = full marks**; otherwise **partial marks** via `difflib` similarity. Set **Expected stdout**, optional **Stdin**, and **Execution max marks**, then click **Run compile & execution**.
 4. **Rubric scoring** — Ensure `rubric.json` is on the server. Enter LLM API key if you use `llm` items. Click **Run rubric scoring** separately when you want rubric-only results.
 5. Two tables appear: **Compile & execution report** and **Rubric report**, each with its own Refresh and Download CSV.
 
@@ -177,7 +177,7 @@ The app at https://nishantkapps.github.io/clint connects to `localhost:5001` whi
 | `results_compile.csv` (path: `output_compile_csv`) | **Run compile & execution** |
 | `results_rubric.csv` (path: `output_rubric_csv`) | **Run rubric scoring** |
 
-**Compile report columns:** `Student_ID`, `File`, `Compiles`, `Compile_Error`, `Compilation_Marks`, `Compilation_Max`, `Stdout`, `Stderr`, `Run_Error`, `Execution_Marks`, `Execution_Max`, `Match_Pct`, `Execution_Note` (`Compilation_Marks` = full `Compilation_Max` if gcc succeeds, else 0)
+**Compile report columns:** `Student_ID`, `File`, `Compiles`, `Compile_Error`, `Compilation_Marks`, `Compilation_Max`, `Binary_Path`, `Stdout`, `Stderr`, `Run_Error`, `Execution_Marks`, `Execution_Max`, `Match_Pct`, `Execution_Note` (`Binary_Path` = path to the retained executable, e.g. `output/2025A5PS0838H` for `2025A5PS0838H.c`)
 
 **Rubric report columns:** `Student_ID`, `File`, `Rubric_1`, `Rubric_2`, …, `Total_Score`, `Max_Score`, `Feedback` (compile status is not included — use the compile report for that.)
 
@@ -187,6 +187,7 @@ The app at https://nishantkapps.github.io/clint connects to `localhost:5001` whi
 
 | Key | Default | Description |
 |-----|---------|-------------|
+| `build_output_dir` | `./output` | Where `gcc -o` writes executables (same stem as each `.c` file) |
 | `submissions_dir` | `./submissions` | Folder containing student `.c` files |
 | `rubric_file` | `./rubric.json` | Rubric exported from the editor |
 | `output_compile_csv` | `./results_compile.csv` | Compile & execution report |
@@ -208,8 +209,8 @@ The app at https://nishantkapps.github.io/clint connects to `localhost:5001` whi
 | Strategy | Example filename | Extracted ID |
 |----------|-----------------|--------------|
 | `before_first_underscore` | `2025A5PS0838H_lab1.c` | `2025A5PS0838H` |
+| `whole_filename` | `2025A5PS0838H.c` (ID-only filename) | `2025A5PS0838H` (use this when files are named `IDNumber.c`) |
 | `after_last_underscore` | `lab1_2025A5PS0838H.c` | `2025A5PS0838H` |
-| `whole_filename` | `2025A5PS0838H.c` | `2025A5PS0838H` |
 | `regex` | any | first capture group of your regex |
 
 ---
@@ -248,6 +249,7 @@ clint/
 ├── server.py               # Flask companion server
 ├── config.json             # Runtime configuration
 ├── rubric.json             # Active rubric (edit via rubric.html, then copy here)
+├── output/                 # gcc -o executables kept here (git-ignored)
 ├── submissions/            # Drop student .c files here (git-ignored)
 ├── test_cases/             # test_cases/<key>/input_N.txt + expected_N.txt
 ├── results_compile.csv     # Generated (git-ignored)

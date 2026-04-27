@@ -8,7 +8,7 @@ A client-side web app hosted on GitHub Pages at `nishantkapps.github.io/clint` p
 
 - **GitHub Pages**: `index.html` (grader), `rubric.html` (rubric editor) — vanilla JS, no build step
 - **Companion server** (`server.py`): Flask + CORS; exposes `/api/run-compile`, `/api/run-rubric`, `/api/stream`, `/api/results-compile`, `/api/results-rubric`, `/api/config`, `/api/rubric`
-- **Grader** (`grader.py`): Two modes — `--mode compile-run` (compile + run + execution marks vs `expected_output` in config) and `--mode rubric` (rubric columns only → `results_rubric.csv`)
+- **Grader** (`grader.py`): Two modes — `--mode compile-run` runs `gcc file.c -o <build_output_dir>/<stem> -lm`, executes that binary, scores stdout vs `expected_output`; `--mode rubric` scores rubric items → `results_rubric.csv`. Executables are kept under `build_output_dir` (default `./output`).
 - **localStorage**: Rubric editor state + default seed; Grader page stores **Server URL** (`clint_server_url`)
 - **config.json** (on server): paths, `stdin_for_run`, `expected_output`, `execution_max_marks`, LLM keys, CSV output paths
 

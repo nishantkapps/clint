@@ -2,6 +2,7 @@ results.csv
 results_compile.csv
 results_rubric.csv
 submissions/
+output/
 __pycache__/
 *.pyc
 *.o
